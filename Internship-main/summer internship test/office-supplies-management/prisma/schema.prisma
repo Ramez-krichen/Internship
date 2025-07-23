@@ -1,0 +1,366 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// User management
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  password  String
+  role      UserRole @default(EMPLOYEE)
+  department String?
+  status     UserStatus @default(ACTIVE)
+  lastSignIn DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  requests      Request[]
+  approvals     Approval[]
+  stockMovements StockMovement[]
+  purchaseOrders PurchaseOrder[]
+  auditLogs     AuditLog[]
+  returns       Return[]
+  processedReturns Return[] @relation("ProcessedReturns")
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// Suppliers
+model Supplier {
+  id          String @id @default(cuid())
+  name        String
+  email       String?
+  phone       String?
+  address     String?
+  contactPerson String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  items          Item[]
+  purchaseOrders PurchaseOrder[]
+
+  @@map("suppliers")
+}
+
+// Categories for items
+model Category {
+  id          String @id @default(cuid())
+  name        String @unique
+  description String?
+  parentId    String?
+  parent      Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryHierarchy")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  items Item[]
+
+  @@map("categories")
+}
+
+// Items/Products
+model Item {
+  id          String  @id @default(cuid())
+  reference   String  @unique
+  name        String
+  description String?
+  unit        String  // e.g., "piece", "box", "kg"
+  price       Float
+  minStock    Int     @default(0)
+  currentStock Int    @default(0)
+  categoryId  String
+  supplierId  String
+  isActive    Boolean @default(true)
+  isEcoFriendly Boolean @default(false)
+  ecoRating   Int?    // 1-5 rating for environmental impact
+  carbonFootprint Float? // CO2 equivalent in kg
+  recyclable  Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  category       Category @relation(fields: [categoryId], references: [id])
+  supplier       Supplier @relation(fields: [supplierId], references: [id])
+  requestItems   RequestItem[]
+  stockMovements StockMovement[]
+  orderItems     OrderItem[]
+  returns        Return[]
+  demandForecasts DemandForecast[]
+
+  @@map("items")
+}
+
+// Requests
+model Request {
+  id          String        @id @default(cuid())
+  title       String
+  description String?
+  status      RequestStatus @default(PENDING)
+  priority    Priority      @default(MEDIUM)
+  requesterId String
+  department  String?
+  totalAmount Float         @default(0)
+  attachments String?       // JSON array of file paths
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  requester    User          @relation(fields: [requesterId], references: [id])
+  items        RequestItem[]
+  approvals    Approval[]
+
+  @@map("requests")
+}
+
+enum RequestStatus {
+  PENDING
+  IN_PROGRESS
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// Request Items (junction table)
+model RequestItem {
+  id         String @id @default(cuid())
+  requestId  String
+  itemId     String
+  quantity   Int
+  unitPrice  Float
+  totalPrice Float
+  notes      String?
+
+  // Relations
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  item    Item    @relation(fields: [itemId], references: [id])
+
+  @@unique([requestId, itemId])
+  @@map("request_items")
+}
+
+// Approval workflow
+model Approval {
+  id        String         @id @default(cuid())
+  requestId String
+  approverId String
+  status    ApprovalStatus @default(PENDING)
+  comments  String?
+  level     Int            @default(1) // For multi-level approval
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  // Relations
+  request  Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  approver User    @relation(fields: [approverId], references: [id])
+
+  @@unique([requestId, approverId, level])
+  @@map("approvals")
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Stock movements
+model StockMovement {
+  id          String       @id @default(cuid())
+  itemId      String
+  type        MovementType
+  quantity    Int
+  reason      String?
+  reference   String?      // Reference to purchase order, request, etc.
+  userId      String
+  createdAt   DateTime     @default(now())
+
+  // Relations
+  item Item @relation(fields: [itemId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("stock_movements")
+}
+
+enum MovementType {
+  IN          // Stock received
+  OUT         // Stock issued
+  ADJUSTMENT  // Manual adjustment
+  RETURN      // Returned items
+}
+
+// Purchase Orders
+model PurchaseOrder {
+  id          String            @id @default(cuid())
+  orderNumber String            @unique
+  supplierId  String
+  status      PurchaseOrderStatus @default(DRAFT)
+  totalAmount Float             @default(0)
+  orderDate   DateTime          @default(now())
+  expectedDate DateTime?
+  receivedDate DateTime?
+  notes       String?
+  createdById String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  // Relations
+  supplier   Supplier    @relation(fields: [supplierId], references: [id])
+  createdBy  User        @relation(fields: [createdById], references: [id])
+  items      OrderItem[]
+
+  @@map("purchase_orders")
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  SENT
+  CONFIRMED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+// Purchase Order Items
+model OrderItem {
+  id              String @id @default(cuid())
+  purchaseOrderId String
+  itemId          String
+  quantity        Int
+  unitPrice       Float
+  totalPrice      Float
+  receivedQuantity Int   @default(0)
+
+  // Relations
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  item          Item          @relation(fields: [itemId], references: [id])
+
+  @@unique([purchaseOrderId, itemId])
+  @@map("order_items")
+}
+
+// Audit Log for tracking deletions and other actions
+model AuditLog {
+  id          String   @id @default(cuid())
+  action      String
+  entity      String
+  entityId    String
+  performedBy String
+  timestamp   DateTime @default(now())
+  details     String?
+
+  // Relations
+  user        User     @relation(fields: [performedBy], references: [id])
+
+  @@map("audit_logs")
+}
+
+// Returns Management
+model Return {
+  id          String      @id @default(cuid())
+  returnNumber String     @unique
+  itemId      String
+  quantity    Int
+  reason      ReturnReason
+  condition   ItemCondition
+  description String?
+  requesterId String
+  status      ReturnStatus @default(PENDING)
+  returnDate  DateTime    @default(now())
+  processedDate DateTime?
+  processedBy String?
+  refundAmount Float?     @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  item        Item        @relation(fields: [itemId], references: [id])
+  requester   User        @relation(fields: [requesterId], references: [id])
+  processor   User?       @relation("ProcessedReturns", fields: [processedBy], references: [id])
+
+  @@map("returns")
+}
+
+enum ReturnReason {
+  DEFECTIVE
+  DAMAGED
+  WRONG_ITEM
+  EXCESS_QUANTITY
+  NOT_NEEDED
+  QUALITY_ISSUE
+  OTHER
+}
+
+enum ItemCondition {
+  NEW
+  GOOD
+  FAIR
+  POOR
+  DAMAGED
+  UNUSABLE
+}
+
+enum ReturnStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PROCESSED
+  REFUNDED
+}
+
+// Demand Forecasting
+model DemandForecast {
+  id          String   @id @default(cuid())
+  itemId      String
+  period      String   // e.g., "2024-01", "2024-Q1"
+  periodType  PeriodType
+  predictedDemand Int
+  actualDemand Int?    @default(0)
+  confidence  Float    // 0-1 confidence score
+  algorithm   String   // Algorithm used for prediction
+  factors     String?  // JSON of factors considered
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  item        Item     @relation(fields: [itemId], references: [id])
+
+  @@unique([itemId, period, periodType])
+  @@map("demand_forecasts")
+}
+
+enum PeriodType {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}

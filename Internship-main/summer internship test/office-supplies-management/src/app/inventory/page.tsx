@@ -1,0 +1,639 @@
+'use client'
+
+import { DashboardLayout } from '@/components/layout/dashboard-layout'
+import { useState, useEffect } from 'react'
+import { Plus, Search, AlertTriangle, Package, Edit, Trash2, Eye, Calendar, Filter } from 'lucide-react'
+import { InventoryModal, ViewInventoryModal } from '../../components/modals/InventoryModal'
+import { ConfirmModal } from '../../components/ui/modal'
+import { ConfirmationModal } from '../../components/ui/confirmation-modal'
+import { DateRange } from '../../components/ui/form'
+import { ExportButton } from '../../components/ui/export'
+
+interface InventoryItem {
+  id: string
+  name: string
+  category: string
+  sku: string
+  description: string
+  quantity: number
+  unit: string
+  minStock: number
+  maxStock: number
+  unitPrice: number
+  supplier: string
+  location: string
+  status: 'in-stock' | 'low-stock' | 'out-of-stock' | 'discontinued'
+  lastUpdated: string
+  expiryDate?: string
+  isActive: boolean
+  isEcoFriendly: boolean
+  ecoRating?: number
+  carbonFootprint?: number
+  recyclable: boolean
+}
+
+// Mock data removed - now fetching from API
+
+export default function InventoryPage() {
+  const [searchTerm, setSearchTerm] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('ALL')
+  const [stockFilter, setStockFilter] = useState('ALL')
+  const [statusFilter, setStatusFilter] = useState('ALL')
+  const [ecoFilter, setEcoFilter] = useState('ALL')
+  const [dateRange, setDateRange] = useState({ from: '', to: '' })
+  const [showDateFilter, setShowDateFilter] = useState(false)
+  
+  // Modal states
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)
+  const [viewingItem, setViewingItem] = useState<InventoryItem | null>(null)
+  const [deletingItem, setDeletingItem] = useState<InventoryItem | null>(null)
+  const [deactivatingItem, setDeactivatingItem] = useState<InventoryItem | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isDeactivating, setIsDeactivating] = useState(false)
+  
+  // Data state
+  const [items, setItems] = useState<InventoryItem[]>([])
+  const [suppliers, setSuppliers] = useState<{id: string, name: string}[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  const categories = ['ALL', ...Array.from(new Set(items.map(item => item.category)))]
+  const statuses = ['ALL', 'in-stock', 'low-stock', 'out-of-stock', 'discontinued']
+  const ecoOptions = ['ALL', 'eco-friendly', 'recyclable', 'non-eco']
+
+  // Filter items based on all criteria
+  const filteredItems = items.filter(item => {
+    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         item.description.toLowerCase().includes(searchTerm.toLowerCase())
+    
+    const matchesCategory = categoryFilter === 'ALL' || item.category === categoryFilter
+    
+    const matchesStock = stockFilter === 'ALL' || 
+                        (stockFilter === 'LOW' && item.quantity <= item.minStock) ||
+                        (stockFilter === 'IN_STOCK' && item.quantity > item.minStock && item.quantity > 0) ||
+                        (stockFilter === 'OUT_OF_STOCK' && item.quantity === 0)
+
+    const matchesEco = ecoFilter === 'ALL' ||
+                       (ecoFilter === 'eco-friendly' && item.isEcoFriendly) ||
+                       (ecoFilter === 'recyclable' && item.recyclable) ||
+                       (ecoFilter === 'non-eco' && !item.isEcoFriendly && !item.recyclable)
+    
+    const matchesStatus = statusFilter === 'ALL' || item.status === statusFilter
+    
+    const matchesDateRange = !dateRange.from || !dateRange.to || 
+                            (new Date(item.lastUpdated) >= new Date(dateRange.from) && 
+                             new Date(item.lastUpdated) <= new Date(dateRange.to))
+    
+    return matchesSearch && matchesCategory && matchesStock && matchesStatus && matchesEco && matchesDateRange
+  })
+
+  const lowStockItems = items.filter(item => item.quantity <= item.minStock && item.isActive)
+  const outOfStockItems = items.filter(item => item.quantity === 0 && item.isActive)
+
+  // Fetch data on component mount
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true)
+        const [itemsResponse, suppliersResponse] = await Promise.all([
+          fetch('/api/items'),
+          fetch('/api/suppliers')
+        ])
+        
+        if (itemsResponse.ok) {
+          const itemsData = await itemsResponse.json()
+          setItems(itemsData.items || [])
+        }
+        
+        if (suppliersResponse.ok) {
+          const suppliersData = await suppliersResponse.json()
+          setSuppliers(suppliersData.suppliers || [])
+        }
+      } catch (error) {
+        console.error('Error fetching data:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [])
+
+  // CRUD Operations
+  const handleAddItem = async (itemData: Omit<InventoryItem, 'id' | 'lastUpdated' | 'status'>) => {
+    setIsLoading(true)
+    try {
+      const response = await fetch('/api/items', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(itemData),
+      })
+      
+      if (response.ok) {
+        const newItem = await response.json()
+        setItems(prev => [...prev, newItem])
+        setIsAddModalOpen(false)
+      } else {
+        console.error('Failed to add item')
+      }
+    } catch (error) {
+      console.error('Error adding item:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleEditItem = async (itemData: Omit<InventoryItem, 'id' | 'lastUpdated' | 'status'>) => {
+    if (!editingItem) return
+    
+    setIsLoading(true)
+    try {
+      const response = await fetch(`/api/items/${editingItem.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(itemData),
+      })
+      
+      if (response.ok) {
+        const updatedItem = await response.json()
+        setItems(prev => prev.map(item => item.id === editingItem.id ? updatedItem : item))
+        setEditingItem(null)
+      } else {
+        console.error('Failed to update item')
+      }
+    } catch (error) {
+      console.error('Error updating item:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleDeleteItem = async () => {
+    if (!deletingItem) return
+    
+    setIsDeleting(true)
+    try {
+      const response = await fetch(`/api/items/${deletingItem.id}`, {
+        method: 'DELETE',
+      })
+      
+      if (response.ok) {
+        setItems(prev => prev.filter(item => item.id !== deletingItem.id))
+        setDeletingItem(null)
+      } else {
+        console.error('Failed to delete item')
+      }
+    } catch (error) {
+      console.error('Error deleting item:', error)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  const handleDeactivateItem = async () => {
+    if (!deactivatingItem) return
+    
+    setIsDeactivating(true)
+    try {
+      // TODO: Implement status change API when database schema supports it
+      // For now, just update local state
+      setItems(prev => prev.map(item => 
+        item.id === deactivatingItem.id 
+          ? { ...item, isActive: false, status: 'discontinued' as const, lastUpdated: new Date().toISOString() }
+          : item
+      ))
+      setDeactivatingItem(null)
+    } catch (error) {
+      console.error('Error deactivating item:', error)
+    } finally {
+      setIsDeactivating(false)
+    }
+  }
+
+  const handleViewItem = (item: InventoryItem) => {
+    setViewingItem(item)
+  }
+
+  const getStockStatus = (item: InventoryItem) => {
+    if (!item.isActive) return { status: 'Discontinued', color: 'text-gray-600' }
+    if (item.quantity === 0) return { status: 'Out of Stock', color: 'text-red-600' }
+    if (item.quantity <= item.minStock) return { status: 'Low Stock', color: 'text-orange-600' }
+    if (item.quantity >= item.maxStock) return { status: 'Overstocked', color: 'text-blue-600' }
+    return { status: 'In Stock', color: 'text-green-600' }
+  }
+
+  const getStatusBadgeColor = (status: string) => {
+    switch (status) {
+      case 'in-stock': return 'bg-green-100 text-green-800'
+      case 'low-stock': return 'bg-yellow-100 text-yellow-800'
+      case 'out-of-stock': return 'bg-red-100 text-red-800'
+      case 'discontinued': return 'bg-gray-100 text-gray-800'
+      default: return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  const clearFilters = () => {
+    setSearchTerm('')
+    setCategoryFilter('ALL')
+    setStockFilter('ALL')
+    setStatusFilter('ALL')
+    setEcoFilter('ALL')
+    setDateRange({ from: '', to: '' })
+    setShowDateFilter(false)
+  }
+
+  const exportData = filteredItems.map(item => ({
+    SKU: item.sku,
+    Name: item.name,
+    Category: item.category,
+    Description: item.description,
+    'Current Stock': item.quantity,
+    Unit: item.unit,
+    'Min Stock': item.minStock,
+    'Max Stock': item.maxStock,
+    'Unit Price': item.unitPrice,
+    'Total Value': (item.quantity * item.unitPrice).toFixed(2),
+    Supplier: item.supplier,
+    Location: item.location,
+    Status: item.status,
+    'Last Updated': new Date(item.lastUpdated).toLocaleDateString(),
+    'Expiry Date': item.expiryDate ? new Date(item.expiryDate).toLocaleDateString() : 'N/A',
+    Active: item.isActive ? 'Yes' : 'No'
+  }))
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Inventory Management</h1>
+            <p className="text-gray-600">Manage your office supplies inventory</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <ExportButton 
+              data={exportData}
+              filename="inventory-report"
+              variant="primary"
+            />
+            <button 
+              onClick={() => setIsAddModalOpen(true)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 transition-colors"
+              disabled={isLoading}
+            >
+              <Plus className="h-4 w-4" />
+              Add Item
+            </button>
+          </div>
+        </div>
+
+        {/* Stock Alerts */}
+        {(lowStockItems.length > 0 || outOfStockItems.length > 0) && (
+          <div className="space-y-3">
+            {outOfStockItems.length > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="flex items-center">
+                  <AlertTriangle className="h-5 w-5 text-red-400 mr-2" />
+                  <h3 className="text-sm font-medium text-red-800">
+                    Out of Stock Alert
+                  </h3>
+                </div>
+                <div className="mt-2 text-sm text-red-700">
+                  {outOfStockItems.length} item(s) are out of stock:
+                  <span className="font-medium ml-1">
+                    {outOfStockItems.slice(0, 3).map(item => item.name).join(', ')}
+                    {outOfStockItems.length > 3 && ` and ${outOfStockItems.length - 3} more`}
+                  </span>
+                </div>
+              </div>
+            )}
+            
+            {lowStockItems.length > 0 && (
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <div className="flex items-center">
+                  <AlertTriangle className="h-5 w-5 text-orange-400 mr-2" />
+                  <h3 className="text-sm font-medium text-orange-800">
+                    Low Stock Alert
+                  </h3>
+                </div>
+                <div className="mt-2 text-sm text-orange-700">
+                  {lowStockItems.length} item(s) are running low on stock:
+                  <span className="font-medium ml-1">
+                    {lowStockItems.slice(0, 3).map(item => item.name).join(', ')}
+                    {lowStockItems.length > 3 && ` and ${lowStockItems.length - 3} more`}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Filters */}
+        <div className="bg-white p-4 rounded-lg shadow space-y-4">
+          <div className="flex flex-col lg:flex-row gap-4">
+            {/* Search */}
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <input
+                  type="text"
+                  placeholder="Search by name, SKU, or description..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-full focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+            </div>
+            
+            {/* Filter Controls */}
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+              >
+                {categories.map(category => (
+                  <option key={category} value={category}>
+                    {category === 'ALL' ? 'All Categories' : category}
+                  </option>
+                ))}
+              </select>
+              
+              <select
+                value={stockFilter}
+                onChange={(e) => setStockFilter(e.target.value)}
+                className="border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+              >
+                <option value="ALL">All Stock Levels</option>
+                <option value="IN_STOCK">In Stock</option>
+                <option value="LOW">Low Stock</option>
+                <option value="OUT_OF_STOCK">Out of Stock</option>
+              </select>
+              
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+              >
+                {statuses.map(status => (
+                  <option key={status} value={status}>
+                    {status === 'ALL' ? 'All Statuses' : status.replace('-', ' ')}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={ecoFilter}
+                onChange={(e) => setEcoFilter(e.target.value)}
+                className="border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+              >
+                {ecoOptions.map(option => (
+                  <option key={option} value={option}>
+                    {option === 'ALL' ? 'All Eco Types' : option.charAt(0).toUpperCase() + option.slice(1)}
+                  </option>
+                ))}
+              </select>
+              
+              <button
+                onClick={() => setShowDateFilter(!showDateFilter)}
+                className={`flex items-center gap-2 px-3 py-2 border rounded-md text-sm transition-colors ${
+                  showDateFilter || dateRange.from || dateRange.to
+                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                    : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <Calendar className="h-4 w-4" />
+                Date Range
+              </button>
+              
+              <button
+                onClick={clearFilters}
+                className="px-3 py-2 text-gray-600 hover:text-gray-800 text-sm transition-colors"
+              >
+                Clear Filters
+              </button>
+            </div>
+          </div>
+          
+          {/* Date Range Filter */}
+          {showDateFilter && (
+            <div className="border-t pt-4">
+              <DateRange
+                value={dateRange}
+                onChange={setDateRange}
+                label="Filter by Last Updated Date"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Results Summary */}
+        <div className="flex items-center justify-between text-sm text-gray-600">
+          <span>
+            Showing {filteredItems.length} of {items.length} items
+            {searchTerm && ` for "${searchTerm}"`}
+          </span>
+          <span>
+            Total Value: ${filteredItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0).toFixed(2)}
+          </span>
+        </div>
+
+        {/* Inventory Table */}
+        <div className="bg-white shadow rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Item
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Category
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Stock
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Price
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Supplier
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredItems.map((item) => {
+                  const stockStatus = getStockStatus(item)
+                  return (
+                    <tr key={item.id} className={`hover:bg-gray-50 ${!item.isActive ? 'opacity-60' : ''}`}>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center">
+                          <Package className="h-8 w-8 text-gray-400 mr-3 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium text-gray-900 truncate">{item.name}</div>
+                            <div className="text-sm text-gray-500">{item.sku}</div>
+                            <div className="text-xs text-gray-400 truncate">{item.description}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-900">
+                        {item.category}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-900">
+                          <span className={`font-medium ${stockStatus.color}`}>
+                            {item.quantity}
+                          </span> {item.unit}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          Min: {item.minStock} | Max: {item.maxStock}
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          {item.location}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-900">
+                          ${item.unitPrice.toFixed(2)}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          Total: ${(item.quantity * item.unitPrice).toFixed(2)}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadgeColor(item.status)}`}>
+                          {item.status.replace('-', ' ')}
+                        </span>
+                        <div className={`text-xs mt-1 ${stockStatus.color}`}>
+                          {stockStatus.status}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-900">
+                        {item.supplier}
+                      </td>
+                      <td className="px-6 py-4 text-sm font-medium">
+                        <div className="flex items-center space-x-2">
+                          <button 
+                            onClick={() => handleViewItem(item)}
+                            className="text-blue-600 hover:text-blue-900 p-1 rounded transition-colors hover:bg-blue-50"
+                            title="View details"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                          <button 
+                            onClick={() => setEditingItem(item)}
+                            className="text-indigo-600 hover:text-indigo-900 p-1 rounded transition-colors hover:bg-indigo-50"
+                            title="Edit item"
+                            disabled={isLoading}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          {item.isActive ? (
+                            <button 
+                              onClick={() => setDeactivatingItem(item)}
+                              className="text-orange-600 hover:text-orange-900 p-1 rounded transition-colors hover:bg-orange-50"
+                              title="Deactivate item"
+                              disabled={isLoading}
+                            >
+                              <Package className="h-4 w-4" />
+                            </button>
+                          ) : (
+                            <button 
+                              onClick={() => setDeletingItem(item)}
+                              className="text-red-600 hover:text-red-900 p-1 rounded transition-colors hover:bg-red-50"
+                              title="Delete item permanently"
+                              disabled={isLoading}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Empty State */}
+        {filteredItems.length === 0 && (
+          <div className="text-center py-12">
+            <Package className="mx-auto h-12 w-12 text-gray-400" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900">No items found</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              {searchTerm || categoryFilter !== 'ALL' || stockFilter !== 'ALL' || statusFilter !== 'ALL' || dateRange.from || dateRange.to
+                ? 'No items match your current search criteria.'
+                : 'Get started by adding your first inventory item.'}
+            </p>
+            {(searchTerm || categoryFilter !== 'ALL' || stockFilter !== 'ALL' || statusFilter !== 'ALL' || dateRange.from || dateRange.to) && (
+              <button
+                onClick={clearFilters}
+                className="mt-3 text-indigo-600 hover:text-indigo-500 text-sm font-medium"
+              >
+                Clear all filters
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Modals */}
+      <InventoryModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onSave={handleAddItem}
+        mode="add"
+        suppliers={suppliers}
+      />
+
+      <InventoryModal
+        isOpen={!!editingItem}
+        onClose={() => setEditingItem(null)}
+        onSave={handleEditItem}
+        item={editingItem}
+        mode="edit"
+        suppliers={suppliers}
+      />
+
+      <ViewInventoryModal
+        isOpen={!!viewingItem}
+        onClose={() => setViewingItem(null)}
+        item={viewingItem}
+      />
+
+      <ConfirmationModal
+        isOpen={!!deletingItem}
+        onClose={() => setDeletingItem(null)}
+        onConfirm={handleDeleteItem}
+        type="delete"
+        entityType="item"
+        entityName={deletingItem?.name}
+        isLoading={isDeleting}
+      />
+
+      <ConfirmationModal
+        isOpen={!!deactivatingItem}
+        onClose={() => setDeactivatingItem(null)}
+        onConfirm={handleDeactivateItem}
+        type="deactivate"
+        entityType="item"
+        entityName={deactivatingItem?.name}
+        isLoading={isDeactivating}
+        customMessage="This will mark the item as discontinued but keep it in the system for historical records."
+      />
+    </DashboardLayout>
+  )
+}

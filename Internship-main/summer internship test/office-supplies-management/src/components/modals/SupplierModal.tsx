@@ -1,0 +1,503 @@
+'use client'
+
+import React, { useState, useEffect } from 'react'
+import { Modal } from '../ui/modal'
+import { FormField, Input, Select, Textarea, FormActions } from '../ui/form'
+import { Building2, Plus, Edit, Eye } from 'lucide-react'
+
+interface Supplier {
+  id: string
+  name: string
+  contactPerson: string
+  contactTitle?: string
+  email: string
+  phone: string
+  address: string
+  website?: string
+  taxId?: string
+  paymentTerms?: string
+  itemsCount: number
+  totalOrders: number
+  lastOrderDate: string
+  status: 'Active' | 'Inactive'
+  rating?: number
+  notes?: string
+  categories?: string[]
+  createdAt?: string
+  updatedAt?: string
+}
+
+interface SupplierModalProps {
+  isOpen: boolean
+  onClose: () => void
+  onSave?: (supplier: Partial<Supplier>) => void
+  initialData?: Supplier
+  mode: 'add' | 'edit' | 'view'
+  title: string
+}
+
+export function SupplierModal({ isOpen, onClose, onSave, initialData, mode, title }: SupplierModalProps) {
+  const [formData, setFormData] = useState({
+    name: '',
+    contactPerson: '',
+    contactTitle: '',
+    email: '',
+    phone: '',
+    address: '',
+    website: '',
+    taxId: '',
+    paymentTerms: '',
+    categories: [] as string[],
+    status: 'Active' as 'Active' | 'Inactive',
+    notes: ''
+  })
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (initialData && (mode === 'edit' || mode === 'view')) {
+      setFormData({
+        name: initialData.name || '',
+        contactPerson: initialData.contactPerson || '',
+        contactTitle: initialData.contactTitle || '',
+        email: initialData.email || '',
+        phone: initialData.phone || '',
+        address: initialData.address || '',
+        website: initialData.website || '',
+        taxId: initialData.taxId || '',
+        paymentTerms: initialData.paymentTerms || '',
+        categories: initialData.categories || [],
+        status: initialData.status || 'Active',
+        notes: initialData.notes || ''
+      })
+    } else {
+      setFormData({
+        name: '',
+        contactPerson: '',
+        contactTitle: '',
+        email: '',
+        phone: '',
+        address: '',
+        website: '',
+        taxId: '',
+        paymentTerms: '',
+        categories: [],
+        status: 'Active',
+        notes: ''
+      })
+    }
+    setErrors({})
+  }, [initialData, mode, isOpen])
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {}
+
+    if (!formData.name.trim()) {
+      newErrors.name = 'Company name is required'
+    }
+
+    if (!formData.contactPerson.trim()) {
+      newErrors.contactPerson = 'Contact person is required'
+    }
+
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required'
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = 'Please enter a valid email address'
+    }
+
+    if (!formData.phone.trim()) {
+      newErrors.phone = 'Phone number is required'
+    } else if (!/^[\+]?[1-9][\d]{0,15}$/.test(formData.phone.replace(/[\s\-\(\)]/g, ''))) {
+      newErrors.phone = 'Please enter a valid phone number'
+    }
+
+    if (!formData.address.trim()) {
+      newErrors.address = 'Address is required'
+    }
+
+    if (formData.categories.length === 0) {
+      newErrors.categories = 'At least one category is required'
+    }
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (mode === 'view' || !onSave) {
+      onClose()
+      return
+    }
+    
+    if (!validateForm()) {
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      await onSave(formData)
+      onClose()
+    } catch (error) {
+      console.error('Error saving supplier:', error)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleInputChange = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }))
+    if (errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: '' }))
+    }
+  }
+
+  const categoryOptions = [
+    { value: '', label: 'Select Category' },
+    { value: 'Office Supplies', label: 'Office Supplies' },
+    { value: 'Technology', label: 'Technology' },
+    { value: 'Furniture', label: 'Furniture' },
+    { value: 'Cleaning Supplies', label: 'Cleaning Supplies' },
+    { value: 'Stationery', label: 'Stationery' },
+    { value: 'Equipment', label: 'Equipment' },
+    { value: 'Maintenance', label: 'Maintenance' },
+    { value: 'Eco-Friendly', label: 'Eco-Friendly' },
+    { value: 'Electronics', label: 'Electronics' },
+    { value: 'Other', label: 'Other' }
+  ]
+
+  const statusOptions = [
+    { value: 'Active', label: 'Active' },
+    { value: 'Inactive', label: 'Inactive' }
+  ]
+
+  // Render stars for rating in view mode
+  const renderStars = (rating: number = 0) => {
+    return Array.from({ length: 5 }, (_, i) => (
+      <span key={i} className={`text-lg ${
+        i < rating ? 'text-yellow-400' : 'text-gray-300'
+      }`}>
+        ★
+      </span>
+    ))
+  }
+
+  // View mode content
+  if (mode === 'view') {
+    return (
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title={title || 'Supplier Details'}
+        size="lg"
+      >
+        <div className="space-y-6">
+          <div className="flex items-center gap-3 mb-6">
+            <Building2 className="h-6 w-6 text-blue-600" />
+            <h3 className="text-lg font-semibold text-gray-900">Supplier Information</h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Company Name</label>
+              <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{formData.name}</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Contact Person</label>
+              <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{formData.contactPerson}</p>
+            </div>
+
+            {formData.contactTitle && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Contact Title</label>
+                <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{formData.contactTitle}</p>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+              <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{formData.email}</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+              <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{formData.phone}</p>
+            </div>
+
+            {formData.website && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
+                <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{formData.website}</p>
+              </div>
+            )}
+
+            {formData.taxId && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tax ID</label>
+                <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{formData.taxId}</p>
+              </div>
+            )}
+
+            {formData.paymentTerms && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
+                <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{formData.paymentTerms}</p>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Categories</label>
+              <div className="flex flex-wrap gap-1">
+                {formData.categories.map((category, index) => (
+                  <span key={index} className="inline-flex px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
+                    {category}
+                  </span>
+                ))}
+                {formData.categories.length === 0 && (
+                  <p className="text-gray-500">No categories specified</p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                formData.status === 'Active' 
+                  ? 'bg-green-100 text-green-800' 
+                  : 'bg-red-100 text-red-800'
+              }`}>
+                {formData.status}
+              </span>
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+              <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{formData.address}</p>
+            </div>
+
+            {initialData?.rating !== undefined && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Rating</label>
+                <div className="flex items-center gap-2">
+                  <div className="flex">{renderStars(initialData.rating)}</div>
+                  <span className="text-sm text-gray-600">({initialData.rating}/5)</span>
+                </div>
+              </div>
+            )}
+
+            {initialData?.totalOrders !== undefined && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Total Orders</label>
+                <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{initialData.totalOrders}</p>
+              </div>
+            )}
+
+            {initialData?.lastOrderDate && (
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Last Order</label>
+                <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">
+                  {new Date(initialData.lastOrderDate).toLocaleDateString()}
+                </p>
+              </div>
+            )}
+
+            {formData.notes && (
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{formData.notes}</p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </Modal>
+    )
+  }
+
+  // Edit/Add mode content
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={title || (mode === 'add' ? 'Add New Supplier' : 'Edit Supplier')}
+      size="lg"
+    >
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="flex items-center gap-3 mb-6">
+          {mode === 'add' ? (
+            <Plus className="h-6 w-6 text-blue-600" />
+          ) : (
+            <Edit className="h-6 w-6 text-blue-600" />
+          )}
+          <h3 className="text-lg font-semibold text-gray-900">
+            {mode === 'add' ? 'Register New Supplier' : 'Update Supplier Information'}
+          </h3>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField label="Company Name" required error={errors.name}>
+            <Input
+              value={formData.name}
+              onChange={(e) => handleInputChange('name', e.target.value)}
+              placeholder="Enter company name"
+              error={!!errors.name}
+            />
+          </FormField>
+
+          <FormField label="Contact Person" required error={errors.contactPerson}>
+            <Input
+              value={formData.contactPerson}
+              onChange={(e) => handleInputChange('contactPerson', e.target.value)}
+              placeholder="Enter contact person name"
+              error={!!errors.contactPerson}
+            />
+          </FormField>
+          
+          <FormField label="Contact Title">
+            <Input
+              value={formData.contactTitle}
+              onChange={(e) => handleInputChange('contactTitle', e.target.value)}
+              placeholder="Enter contact title (optional)"
+            />
+          </FormField>
+
+          <FormField label="Email Address" required error={errors.email}>
+            <Input
+              type="email"
+              value={formData.email}
+              onChange={(e) => handleInputChange('email', e.target.value)}
+              placeholder="Enter email address"
+              error={!!errors.email}
+            />
+          </FormField>
+
+          <FormField label="Phone Number" required error={errors.phone}>
+            <Input
+              type="tel"
+              value={formData.phone}
+              onChange={(e) => handleInputChange('phone', e.target.value)}
+              placeholder="Enter phone number"
+              error={!!errors.phone}
+            />
+          </FormField>
+
+          <FormField label="Categories" required error={errors.categories}>
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2 mb-2">
+                {formData.categories.map((category, index) => (
+                  <span key={index} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    {category}
+                    <button 
+                      type="button"
+                      className="ml-1 text-blue-500 hover:text-blue-700"
+                      onClick={() => {
+                        const newCategories = [...formData.categories];
+                        newCategories.splice(index, 1);
+                        setFormData(prev => ({ ...prev, categories: newCategories }));
+                      }}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <Select
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value && !formData.categories.includes(e.target.value)) {
+                      setFormData(prev => ({
+                        ...prev,
+                        categories: [...prev.categories, e.target.value]
+                      }));
+                      if (errors.categories) {
+                        setErrors(prev => ({ ...prev, categories: '' }));
+                      }
+                    }
+                  }}
+                  options={categoryOptions}
+                  error={!!errors.categories}
+                />
+              </div>
+              {errors.categories && <p className="text-sm text-red-500 mt-1">{errors.categories}</p>}
+            </div>
+          </FormField>
+
+          <FormField label="Status">
+            <Select
+              value={formData.status}
+              onChange={(e) => handleInputChange('status', e.target.value)}
+              options={statusOptions}
+            />
+          </FormField>
+
+          <FormField label="Website">
+            <Input
+              type="url"
+              value={formData.website}
+              onChange={(e) => handleInputChange('website', e.target.value)}
+              placeholder="Enter website URL (optional)"
+            />
+          </FormField>
+
+          <FormField label="Tax ID">
+            <Input
+              value={formData.taxId}
+              onChange={(e) => handleInputChange('taxId', e.target.value)}
+              placeholder="Enter tax ID (optional)"
+            />
+          </FormField>
+
+          <FormField label="Payment Terms">
+            <Input
+              value={formData.paymentTerms}
+              onChange={(e) => handleInputChange('paymentTerms', e.target.value)}
+              placeholder="Enter payment terms (optional)"
+            />
+          </FormField>
+
+          <FormField label="Address" required error={errors.address} className="md:col-span-2">
+            <Textarea
+              value={formData.address}
+              onChange={(e) => handleInputChange('address', e.target.value)}
+              placeholder="Enter complete address"
+              rows={3}
+              error={!!errors.address}
+            />
+          </FormField>
+
+          <FormField label="Notes" className="md:col-span-2">
+            <Textarea
+              value={formData.notes}
+              onChange={(e) => handleInputChange('notes', e.target.value)}
+              placeholder="Enter additional notes (optional)"
+              rows={3}
+            />
+          </FormField>
+        </div>
+
+        <FormActions
+          onCancel={onClose}
+          onSubmit={handleSubmit}
+          submitText={mode === 'add' ? 'Add Supplier' : 'Update Supplier'}
+          isSubmitting={isSubmitting}
+          submitIcon={mode === 'add' ? Plus : Edit}
+        />
+      </form>
+    </Modal>
+  )
+}
+
+// We don't need a separate ViewSupplierModal component anymore since we've integrated view mode into the main SupplierModal component
