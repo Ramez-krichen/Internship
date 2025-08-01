@@ -3,19 +3,19 @@
 Use these credentials to test the Office Supplies Management System:
 
 ## Admin User
-- **Email:** admin@company.com
+- **Email:** admin@example.com
 - **Password:** admin123
 - **Role:** ADMIN
 - **Department:** IT
 
 ## Manager User
-- **Email:** manager@company.com
+- **Email:** manager@example.com
 - **Password:** manager123
 - **Role:** MANAGER
 - **Department:** Operations
 
 ## Employee User
-- **Email:** employee@company.com
+- **Email:** employee@example.com
 - **Password:** employee123
 - **Role:** EMPLOYEE
 - **Department:** Sales

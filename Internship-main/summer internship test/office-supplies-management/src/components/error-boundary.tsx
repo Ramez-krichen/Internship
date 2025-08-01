@@ -16,11 +16,12 @@ export function ErrorBoundary({ children }: ErrorBoundaryProps) {
     const handleRejection = (event: PromiseRejectionEvent) => {
       console.error('Unhandled promise rejection:', event.reason);
       
-      // Check if it's an RSC-related error
+      // Check if it's an RSC-related error but not auth-related
       if (
-        event.reason?.message?.includes('_rsc') ||
+        (event.reason?.message?.includes('_rsc') ||
         event.reason?.message?.includes('aborted') ||
-        event.reason?.toString().includes('net::ERR_ABORTED')
+        event.reason?.toString().includes('net::ERR_ABORTED')) &&
+        !event.reason?.toString().includes('/api/auth/')
       ) {
         event.preventDefault();
         setHasError(true);
@@ -31,17 +32,18 @@ export function ErrorBoundary({ children }: ErrorBoundaryProps) {
     const handleError = (event: ErrorEvent) => {
       console.error('Error event:', event.error);
       
-      // Check if it's an RSC-related error
+      // Check if it's an RSC-related error but not auth-related
       if (
-        event.error?.message?.includes('_rsc') ||
+        (event.error?.message?.includes('_rsc') ||
         event.error?.message?.includes('aborted') ||
-        event.error?.toString().includes('net::ERR_ABORTED')
+        event.error?.toString().includes('net::ERR_ABORTED')) &&
+        !event.error?.toString().includes('/api/auth/')
       ) {
         event.preventDefault();
         setHasError(true);
       }
     };
-
+    
     window.addEventListener('unhandledrejection', handleRejection);
     window.addEventListener('error', handleError);
 

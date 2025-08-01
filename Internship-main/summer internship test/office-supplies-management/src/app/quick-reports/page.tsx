@@ -64,8 +64,12 @@ export default function QuickReportsPage() {
         const data = await response.json()
         setReportData(data)
         setLastUpdated(new Date())
+      } else if (response.status === 401) {
+        console.error('Authentication required. Please log in to view reports.')
+        // Could redirect to login page here if needed
+        // window.location.href = '/auth/signin'
       } else {
-        console.error('Failed to fetch report data')
+        console.error('Failed to fetch report data:', response.status, response.statusText)
       }
     } catch (error) {
       console.error('Error fetching report data:', error)

@@ -456,7 +456,7 @@ export function InventoryModal({ isOpen, onClose, onSave, item, mode, suppliers 
           onSubmit={handleSubmit}
           submitText={mode === 'add' ? 'Add Item' : 'Update Item'}
           isSubmitting={isSubmitting}
-          submitIcon={mode === 'add' ? Plus : Edit}
+          submitIcon={mode === 'add' ? <Plus className="h-4 w-4" /> : <Edit className="h-4 w-4" />}
         />
       </form>
     </Modal>

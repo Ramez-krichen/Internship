@@ -507,7 +507,7 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
           onSubmit={handleSubmit}
           submitText={mode === 'add' ? 'Submit Request' : 'Update Request'}
           isSubmitting={isSubmitting}
-          submitIcon={mode === 'add' ? Plus : Edit}
+          submitIcon={mode === 'add' ? <Plus className="h-4 w-4" /> : <Edit className="h-4 w-4" />}
         />
       </form>
     </Modal>

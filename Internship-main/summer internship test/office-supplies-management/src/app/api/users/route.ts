@@ -9,7 +9,7 @@ export async function GET() {
     const session = await getServerSession(authOptions)
     console.log('Session in /api/users:', session)
 
-    if (!session || session.user.role !== 'ADMIN') {
+    if (!session || (session.user.role !== 'ADMIN' && session.user.role !== 'MANAGER')) {
       console.log('Unauthorized access to /api/users. Session:', session)
 
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

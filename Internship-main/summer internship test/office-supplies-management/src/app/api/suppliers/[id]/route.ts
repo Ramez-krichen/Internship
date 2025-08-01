@@ -178,7 +178,7 @@ export async function DELETE(
 
     // Safe to delete
     const deletedSupplier = await prisma.supplier.delete({
-      where: { id: params.id }
+      where: { id: supplierId }
     })
 
     // Create audit log

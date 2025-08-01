@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db as prisma } from '@/lib/db'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library'
 
 // GET /api/suppliers - List all suppliers
 export async function GET(request: NextRequest) {
@@ -123,44 +124,97 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if supplier with same name already exists
-    const existingSupplier = await prisma.supplier.findFirst({
-      where: { name: { equals: name, mode: 'insensitive' } }
-    })
-
-    if (existingSupplier) {
+    if (!contactPerson) {
       return NextResponse.json(
-        { error: 'Supplier with this name already exists' },
+        { error: 'Contact person is required' },
         { status: 400 }
       )
     }
 
-    const newSupplier = await prisma.supplier.create({
-      data: {
-        name,
-        email: email || null,
-        phone: phone || null,
-        address: address || null,
-        contactPerson: contactPerson || null
-      }
-    })
+    // Check if supplier with same name already exists
+    try {
+      const trimmedName = name.trim()
+      
+      const existingSupplier = await prisma.supplier.findFirst({
+        where: {
+          name: trimmedName
+        }
+      })
 
-    // Create audit log
-    await prisma.auditLog.create({
-      data: {
-        action: 'CREATE',
-        entity: 'Supplier',
-        entityId: newSupplier.id,
-        performedBy: session.user.id,
-        details: `Created supplier: ${newSupplier.name}`
+      if (existingSupplier) {
+        return NextResponse.json(
+          { error: 'Supplier with this name already exists' },
+          { status: 400 }
+        )
       }
-    })
+    } catch (findError) {
+      console.error('Error checking for existing supplier:', findError)
+      return NextResponse.json(
+        { error: 'Database error: Failed to check for existing supplier', details: findError instanceof Error ? findError.message : 'Unknown database error' },
+        { status: 500 }
+      )
+    }
 
-    return NextResponse.json(newSupplier, { status: 201 })
+    // Create the supplier
+    try {
+      // Sanitize input data
+      const sanitizedData = {
+        name: name.trim(),
+        email: email ? email.trim() : null,
+        phone: phone ? phone.trim() : null,
+        address: address ? address.trim() : null,
+        contactPerson: contactPerson ? contactPerson.trim() : null,
+        // Add optional fields if they exist in the request
+        website: body.website ? body.website.trim() : null,
+        taxId: body.taxId ? body.taxId.trim() : null,
+        paymentTerms: body.paymentTerms ? body.paymentTerms.trim() : null,
+        notes: body.notes ? body.notes.trim() : null
+      }
+
+      const newSupplier = await prisma.supplier.create({
+        data: sanitizedData
+      })
+
+      // Create audit log in a separate try-catch to ensure it doesn't affect the main operation
+      try {
+        await prisma.auditLog.create({
+          data: {
+            action: 'CREATE',
+            entity: 'Supplier',
+            entityId: newSupplier.id,
+            performedBy: session.user.id,
+            details: `Created supplier: ${newSupplier.name}`
+          }
+        })
+      } catch (logError) {
+        // Just log the error but don't fail the operation if audit logging fails
+        console.error('Error creating audit log:', logError)
+      }
+
+      return NextResponse.json(newSupplier, { status: 201 })
+    } catch (dbError) {
+      console.error('Database error creating supplier:', dbError)
+      
+      // Handle specific Prisma errors
+      if (dbError instanceof PrismaClientKnownRequestError) {
+        // P2002 is the error code for unique constraint violations
+        if (dbError.code === 'P2002') {
+          return NextResponse.json(
+            { error: 'Supplier with this name already exists', details: 'A supplier with this name is already in the database' },
+            { status: 400 }
+          )
+        }
+      }
+      
+      return NextResponse.json(
+        { error: 'Database error: Failed to create supplier', details: dbError instanceof Error ? dbError.message : 'Unknown database error' },
+        { status: 500 }
+      )
+    }
   } catch (error) {
     console.error('Error creating supplier:', error)
     return NextResponse.json(
-      { error: 'Failed to create supplier' },
+      { error: 'Failed to create supplier', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }

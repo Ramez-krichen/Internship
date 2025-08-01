@@ -65,9 +65,9 @@ export async function POST(
     await prisma.auditLog.create({
       data: {
         action: 'SEND_ORDER',
-        entityType: 'PURCHASE_ORDER',
+        entity: 'PURCHASE_ORDER',
         entityId: params.id,
-        userId: session.user.id,
+        performedBy: session.user.id,
         details: `Sent purchase order: ${updatedOrder.orderNumber} to supplier: ${updatedOrder.supplier.name}`
       }
     })

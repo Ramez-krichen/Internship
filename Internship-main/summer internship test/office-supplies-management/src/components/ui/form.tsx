@@ -30,17 +30,36 @@ export function FormField({ label, error, required, children, className = '' }: 
 // Input Component
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   error?: FieldError
+  icon?: React.ReactNode
+  loading?: boolean
 }
 
-export function Input({ error, className = '', ...props }: InputProps) {
-  const baseClasses = 'block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors'
-  const errorClasses = error ? 'border-red-300' : 'border-gray-300'
-  
+export function Input({ error, icon, loading, className = '', ...props }: InputProps) {
+  const baseClasses = 'block w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 placeholder-gray-400'
+  const errorClasses = error ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 hover:border-gray-400'
+  const iconPadding = icon ? 'pl-10' : ''
+  const loadingClasses = loading ? 'opacity-50 cursor-not-allowed' : ''
+
   return (
-    <input
-      className={`${baseClasses} ${errorClasses} ${className}`}
-      {...props}
-    />
+    <div className="relative">
+      {icon && (
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <div className="text-gray-400">
+            {icon}
+          </div>
+        </div>
+      )}
+      <input
+        className={`${baseClasses} ${errorClasses} ${iconPadding} ${loadingClasses} ${className}`}
+        disabled={loading || props.disabled}
+        {...props}
+      />
+      {loading && (
+        <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+          <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -49,26 +68,45 @@ interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   error?: FieldError
   options: { value: string; label: string }[]
   placeholder?: string
+  loading?: boolean
+  icon?: React.ReactNode
 }
 
-export function Select({ error, options = [], placeholder, className = '', children, ...props }: SelectProps & { children?: React.ReactNode }) {
-  const baseClasses = 'block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors'
-  const errorClasses = error ? 'border-red-300' : 'border-gray-300'
-  
+export function Select({ error, options = [], placeholder, loading, icon, className = '', children, ...props }: SelectProps & { children?: React.ReactNode }) {
+  const baseClasses = 'block w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white'
+  const errorClasses = error ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 hover:border-gray-400'
+  const iconPadding = icon ? 'pl-10' : ''
+  const loadingClasses = loading ? 'opacity-50 cursor-not-allowed' : ''
+
   return (
-    <select
-      className={`${baseClasses} ${errorClasses} ${className}`}
-      {...props}
-    >
-      {placeholder && (
-        <option value="">{placeholder}</option>
+    <div className="relative">
+      {icon && (
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-10">
+          <div className="text-gray-400">
+            {icon}
+          </div>
+        </div>
       )}
-      {children || options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
+      <select
+        className={`${baseClasses} ${errorClasses} ${iconPadding} ${loadingClasses} ${className}`}
+        disabled={loading || props.disabled}
+        {...props}
+      >
+        {placeholder && (
+          <option value="" disabled>{placeholder}</option>
+        )}
+        {children || options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      {loading && (
+        <div className="absolute inset-y-0 right-8 flex items-center">
+          <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -168,6 +206,8 @@ interface FormActionsProps {
   cancelText?: string
   isLoading?: boolean
   submitDisabled?: boolean
+  submitIcon?: React.ReactNode
+  isSubmitting?: boolean
 }
 
 export function FormActions({ 
@@ -176,14 +216,16 @@ export function FormActions({
   submitText = 'Save', 
   cancelText = 'Cancel',
   isLoading = false,
-  submitDisabled = false
+  submitDisabled = false,
+  submitIcon = null,
+  isSubmitting = false
 }: FormActionsProps) {
   return (
     <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
       <button
         type="button"
         onClick={onCancel}
-        disabled={isLoading}
+        disabled={isLoading || isSubmitting}
         className="px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         {cancelText}
@@ -191,10 +233,11 @@ export function FormActions({
       <button
         type={onSubmit ? 'button' : 'submit'}
         onClick={onSubmit}
-        disabled={isLoading || submitDisabled}
-        className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        disabled={isLoading || submitDisabled || isSubmitting}
+        className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
       >
-        {isLoading ? 'Loading...' : submitText}
+        {submitIcon && <span className="flex-shrink-0">{submitIcon}</span>}
+        <span className="flex-grow">{isLoading || isSubmitting ? 'Loading...' : submitText}</span>
       </button>
     </div>
   )

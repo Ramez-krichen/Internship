@@ -52,7 +52,7 @@ export function SupplierModal({ isOpen, onClose, onSave, initialData, mode, titl
     status: 'Active' as 'Active' | 'Inactive',
     notes: ''
   })
-  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [errors, setErrors] = useState<Record<string, string>>({ form: '' })
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
@@ -91,39 +91,63 @@ export function SupplierModal({ isOpen, onClose, onSave, initialData, mode, titl
   }, [initialData, mode, isOpen])
 
   const validateForm = () => {
-    const newErrors: Record<string, string> = {}
+    // Start with empty errors but keep the form field
+    const newErrors: Record<string, string> = { form: '' }
 
+    // Name validation - required
     if (!formData.name.trim()) {
       newErrors.name = 'Company name is required'
+    } else if (formData.name.trim().length > 100) {
+      newErrors.name = 'Company name must be less than 100 characters'
     }
 
+    // Contact person validation - required
     if (!formData.contactPerson.trim()) {
       newErrors.contactPerson = 'Contact person is required'
+    } else if (formData.contactPerson.trim().length > 100) {
+      newErrors.contactPerson = 'Contact person name must be less than 100 characters'
     }
 
+    // Email validation - required
     if (!formData.email.trim()) {
-      newErrors.email = 'Email is required'
+      newErrors.email = 'Email address is required'
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = 'Please enter a valid email address'
+    } else if (formData.email.trim().length > 255) {
+      newErrors.email = 'Email must be less than 255 characters'
     }
 
+    // Phone validation - required
     if (!formData.phone.trim()) {
       newErrors.phone = 'Phone number is required'
-    } else if (!/^[\+]?[1-9][\d]{0,15}$/.test(formData.phone.replace(/[\s\-\(\)]/g, ''))) {
-      newErrors.phone = 'Please enter a valid phone number'
+    } else {
+      // Remove all non-digit characters except + for international format
+      const cleanedPhone = formData.phone.replace(/[\s\-\(\)]/g, '')
+      if (!/^[\+]?[0-9]{6,20}$/.test(cleanedPhone)) {
+        newErrors.phone = 'Please enter a valid phone number (6-20 digits)'
+      }
     }
 
+    // Address validation - required
     if (!formData.address.trim()) {
       newErrors.address = 'Address is required'
+    } else if (formData.address.trim().length > 500) {
+      newErrors.address = 'Address must be less than 500 characters'
     }
 
-    // Make categories optional to avoid validation errors
-    // if (formData.categories.length === 0) {
-    //   newErrors.categories = 'At least one category is required'
-    // }
+    // Website validation - optional but format check if provided
+    if (formData.website && formData.website.trim() && !/^(https?:\/\/)?([\w\-])+\.{1}([a-zA-Z]{2,63})([\/\w-]*)*\/?$/.test(formData.website)) {
+      newErrors.website = 'Please enter a valid website URL'
+    }
+
+    // Remove the form field from errors if no actual errors exist
+    const actualErrors = Object.keys(newErrors).filter(key => key !== 'form' && newErrors[key])
+    if (actualErrors.length === 0) {
+      delete newErrors.form
+    }
 
     setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
+    return actualErrors.length === 0
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -140,18 +164,42 @@ export function SupplierModal({ isOpen, onClose, onSave, initialData, mode, titl
 
     setIsSubmitting(true)
     try {
-      await onSave({
+      // Sanitize and prepare data
+      const sanitizedData = {
         ...formData,
-        // Ensure all fields have values
         name: formData.name.trim(),
         contactPerson: formData.contactPerson.trim(),
         email: formData.email.trim(),
         phone: formData.phone.trim(),
-        address: formData.address.trim()
-      })
+        address: formData.address.trim(),
+        website: formData.website?.trim() || '',
+        taxId: formData.taxId?.trim() || '',
+        paymentTerms: formData.paymentTerms?.trim() || '',
+        notes: formData.notes?.trim() || ''
+      }
+      
+      await onSave(sanitizedData)
       onClose()
     } catch (error) {
       console.error('Error saving supplier:', error)
+      
+      // Display error in the form
+      if (error instanceof Error) {
+        // Check for specific error types
+        const errorMessage = error.message
+        
+        if (errorMessage.includes('name already exists')) {
+          setErrors(prev => ({ ...prev, name: 'A supplier with this name already exists' }))
+        } else if (errorMessage.includes('Database error')) {
+          // Show a general error at the form level
+          setErrors(prev => ({ ...prev, form: 'Database error. Please try again later.' }))
+        } else {
+          // Show the error message
+          setErrors(prev => ({ ...prev, form: errorMessage }))
+        }
+      } else {
+        setErrors(prev => ({ ...prev, form: 'An unexpected error occurred' }))
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -336,6 +384,12 @@ export function SupplierModal({ isOpen, onClose, onSave, initialData, mode, titl
       size="lg"
     >
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Form-level error display */}
+        {errors.form && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
+            <span className="block sm:inline">{errors.form}</span>
+          </div>
+        )}
         <div className="flex items-center gap-3 mb-6">
           {mode === 'add' ? (
             <Plus className="h-6 w-6 text-blue-600" />
@@ -394,7 +448,7 @@ export function SupplierModal({ isOpen, onClose, onSave, initialData, mode, titl
             />
           </FormField>
 
-          <FormField label="Categories" required error={errors.categories}>
+          <FormField label="Categories" error={errors.categories}>
             <div className="space-y-2">
               <div className="flex flex-wrap gap-2 mb-2">
                 {formData.categories.map((category, index) => (
@@ -460,7 +514,7 @@ export function SupplierModal({ isOpen, onClose, onSave, initialData, mode, titl
                     />
                     <button
                       type="button"
-                      className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                      className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-1"
                       onClick={() => {
                         const categoryInput = document.getElementById('custom-category') as HTMLInputElement;
                         if (categoryInput && categoryInput.value && !formData.categories.includes(categoryInput.value)) {
@@ -475,7 +529,8 @@ export function SupplierModal({ isOpen, onClose, onSave, initialData, mode, titl
                         }
                       }}
                     >
-                      Add
+                      <Plus className="h-3 w-3" />
+                      <span>Add</span>
                     </button>
                   </div>
                 </div>
@@ -541,7 +596,7 @@ export function SupplierModal({ isOpen, onClose, onSave, initialData, mode, titl
           onSubmit={handleSubmit}
           submitText={mode === 'add' ? 'Add Supplier' : 'Update Supplier'}
           isSubmitting={isSubmitting}
-          submitIcon={mode === 'add' ? Plus : Edit}
+          submitIcon={mode === 'add' ? <Plus className="h-4 w-4" /> : <Edit className="h-4 w-4" />}
         />
       </form>
     </Modal>

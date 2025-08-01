@@ -56,9 +56,30 @@ export async function GET(request: NextRequest) {
     const [items, total] = await Promise.all([
       prisma.item.findMany({
         where,
-        include: {
-          category: true,
-          supplier: true
+        select: {
+          id: true,
+          reference: true,
+          name: true,
+          description: true,
+          unit: true,
+          price: true,
+          minStock: true,
+          currentStock: true,
+          isActive: true,
+          isEcoFriendly: true,
+          ecoRating: true,
+          carbonFootprint: true,
+          updatedAt: true,
+          category: {
+            select: {
+              name: true
+            }
+          },
+          supplier: {
+            select: {
+              name: true
+            }
+          }
         },
         skip,
         take: limit,
@@ -92,7 +113,7 @@ export async function GET(request: NextRequest) {
       recyclable: item.recyclable
     }))
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       items: transformedItems,
       pagination: {
         page,
@@ -101,6 +122,11 @@ export async function GET(request: NextRequest) {
         pages: Math.ceil(total / limit)
       }
     })
+
+    // Add caching headers for better performance
+    response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300')
+
+    return response
   } catch (error) {
     console.error('Error fetching items:', error)
     return NextResponse.json(

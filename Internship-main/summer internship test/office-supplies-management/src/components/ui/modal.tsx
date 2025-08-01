@@ -41,10 +41,10 @@ export function Modal({
   if (!isOpen) return null
 
   const sizeClasses = {
-    sm: 'max-w-md',
-    md: 'max-w-lg',
-    lg: 'max-w-2xl',
-    xl: 'max-w-4xl'
+    sm: 'max-w-md mx-4 sm:mx-auto',
+    md: 'max-w-lg mx-4 sm:mx-auto',
+    lg: 'max-w-2xl mx-4 sm:mx-auto',
+    xl: 'max-w-4xl mx-4 sm:mx-auto'
   }
 
   return (
@@ -57,23 +57,23 @@ export function Modal({
         />
         
         {/* Modal */}
-        <div className={`relative bg-white rounded-lg shadow-xl w-full ${sizeClasses[size]} transform transition-all`}>
+        <div className={`relative bg-white rounded-lg shadow-xl w-full ${sizeClasses[size]} transform transition-all max-h-[90vh] flex flex-col`}>
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+          <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200 flex-shrink-0">
+            <h3 className="text-lg font-semibold text-gray-900 truncate pr-4">{title}</h3>
             {showCloseButton && (
               <button
                 onClick={onClose}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-md hover:bg-gray-100 flex-shrink-0"
                 title="Close modal"
               >
                 <X className="h-5 w-5" />
               </button>
             )}
           </div>
-          
+
           {/* Content */}
-          <div className="p-6">
+          <div className="p-4 sm:p-6 overflow-y-auto flex-1">
             {children}
           </div>
         </div>

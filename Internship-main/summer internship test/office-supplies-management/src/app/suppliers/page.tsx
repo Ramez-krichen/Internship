@@ -116,28 +116,51 @@ export default function SuppliersPage() {
   
   const handleAddSupplier = async (supplierData: Partial<Supplier>) => {
     try {
+      // Validate required fields before sending request
+      if (!supplierData.name) {
+        toast.error('Supplier name is required')
+        return
+      }
+      
+      if (!supplierData.contactPerson) {
+        toast.error('Contact person is required')
+        return
+      }
+      
+      // Sanitize input data
+      const sanitizedData = {
+        name: supplierData.name.trim(),
+        email: supplierData.email?.trim(),
+        phone: supplierData.phone?.trim(),
+        address: supplierData.address?.trim(),
+        contactPerson: supplierData.contactPerson.trim(),
+        website: supplierData.website?.trim(),
+        taxId: supplierData.taxId?.trim(),
+        paymentTerms: supplierData.paymentTerms?.trim(),
+        notes: supplierData.notes?.trim()
+      }
+      
       // First create the supplier without categories
       const response = await fetch('/api/suppliers', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          name: supplierData.name,
-          email: supplierData.email,
-          phone: supplierData.phone,
-          address: supplierData.address,
-          contactPerson: supplierData.contactPerson
-        }),
+        body: JSON.stringify(sanitizedData),
       })
 
+      // Parse the response JSON first
+      const responseData = await response.json()
+      
+      // Then check if the response was successful
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to create supplier')
+        const errorMessage = responseData.error || 'Failed to create supplier'
+        const errorDetails = responseData.details ? `: ${responseData.details}` : ''
+        throw new Error(`${errorMessage}${errorDetails}`)
       }
 
-      // Get the created supplier data
-      const createdSupplier = await response.json()
+      // Use the already parsed response data
+      const createdSupplier = responseData
       
       // Store the categories in local state for display purposes
       if (supplierData.categories && supplierData.categories.length > 0) {
@@ -157,7 +180,36 @@ export default function SuppliersPage() {
       fetchSuppliers() // Refresh the list
     } catch (error) {
       console.error('Error adding supplier:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to add supplier')
+      
+      // Enhanced error handling with more specific messages
+      let errorMessage = 'Failed to create supplier'
+      
+      if (error instanceof Error) {
+        // Check for common error patterns
+        const message = error.message
+        
+        if (message.includes('Database error')) {
+          errorMessage = 'Database error: Unable to create supplier. Please try again later.'
+        } else if (message.includes('already exists')) {
+          errorMessage = 'A supplier with this name already exists.'
+        } else if (message.includes('required')) {
+          errorMessage = message // Use the validation error message directly
+        } else if (message.includes('permission')) {
+          errorMessage = 'Permission error: You may not have the right permissions to create a supplier.'
+        } else if (message.includes('network')) {
+          errorMessage = 'Network error: Please check your connection and try again.'
+        } else if (message.includes('timeout')) {
+          errorMessage = 'Request timed out. Please try again.'
+        } else {
+          // Use the error message as is, but clean it up if needed
+          errorMessage = message.replace(/Error:/g, '').trim()
+        }
+      }
+      
+      toast.error(`Error adding supplier: ${errorMessage}`)
+      
+      // Return the error so the modal can display it
+      throw new Error(errorMessage)
     }
   }
   
@@ -326,7 +378,7 @@ export default function SuppliersPage() {
               className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 transition-colors"
             >
               <Plus className="h-4 w-4" />
-              Add Supplier
+              <span>Add Supplier</span>
             </button>
           </div>
         </div>
@@ -566,7 +618,7 @@ export default function SuppliersPage() {
         type="delete"
         entityType="supplier"
         entityName={supplierToDelete?.name}
-        isLoading={isDeleting}
+        loading={isDeleting}
       />
 
       {/* Deactivate/Activate Confirmation Modal */}
@@ -577,7 +629,7 @@ export default function SuppliersPage() {
         type={supplierToDeactivate?.status === 'Active' ? 'deactivate' : 'activate'}
         entityType="supplier"
         entityName={supplierToDeactivate?.name}
-        isLoading={isDeactivating}
+        loading={isDeactivating}
       />
     </DashboardLayout>
   )

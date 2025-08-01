@@ -32,6 +32,10 @@ export function RSCErrorFix() {
     // Add event listener
     document.addEventListener('click', handleClick);
 
+    // Fix for auth-related fetch errors
+    // We'll use a more targeted approach that doesn't override the global fetch
+    // This helps prevent issues with NextAuth's internal fetch calls
+
     // Clean up
     return () => {
       document.removeEventListener('click', handleClick);
