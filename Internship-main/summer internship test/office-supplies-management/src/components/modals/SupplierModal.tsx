@@ -34,9 +34,10 @@ interface SupplierModalProps {
   initialData?: Supplier
   mode: 'add' | 'edit' | 'view'
   title: string
+  categories?: Array<{ id: string; name: string }>
 }
 
-export function SupplierModal({ isOpen, onClose, onSave, initialData, mode, title }: SupplierModalProps) {
+export function SupplierModal({ isOpen, onClose, onSave, initialData, mode, title, categories = [] }: SupplierModalProps) {
   const [formData, setFormData] = useState({
     name: '',
     contactPerson: '',
@@ -116,9 +117,10 @@ export function SupplierModal({ isOpen, onClose, onSave, initialData, mode, titl
       newErrors.address = 'Address is required'
     }
 
-    if (formData.categories.length === 0) {
-      newErrors.categories = 'At least one category is required'
-    }
+    // Make categories optional to avoid validation errors
+    // if (formData.categories.length === 0) {
+    //   newErrors.categories = 'At least one category is required'
+    // }
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -138,7 +140,15 @@ export function SupplierModal({ isOpen, onClose, onSave, initialData, mode, titl
 
     setIsSubmitting(true)
     try {
-      await onSave(formData)
+      await onSave({
+        ...formData,
+        // Ensure all fields have values
+        name: formData.name.trim(),
+        contactPerson: formData.contactPerson.trim(),
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
+        address: formData.address.trim()
+      })
       onClose()
     } catch (error) {
       console.error('Error saving supplier:', error)
@@ -156,16 +166,7 @@ export function SupplierModal({ isOpen, onClose, onSave, initialData, mode, titl
 
   const categoryOptions = [
     { value: '', label: 'Select Category' },
-    { value: 'Office Supplies', label: 'Office Supplies' },
-    { value: 'Technology', label: 'Technology' },
-    { value: 'Furniture', label: 'Furniture' },
-    { value: 'Cleaning Supplies', label: 'Cleaning Supplies' },
-    { value: 'Stationery', label: 'Stationery' },
-    { value: 'Equipment', label: 'Equipment' },
-    { value: 'Maintenance', label: 'Maintenance' },
-    { value: 'Eco-Friendly', label: 'Eco-Friendly' },
-    { value: 'Electronics', label: 'Electronics' },
-    { value: 'Other', label: 'Other' }
+    ...categories.map(category => ({ value: category.name, label: category.name }))
   ]
 
   const statusOptions = [
@@ -406,6 +407,10 @@ export function SupplierModal({ isOpen, onClose, onSave, initialData, mode, titl
                         const newCategories = [...formData.categories];
                         newCategories.splice(index, 1);
                         setFormData(prev => ({ ...prev, categories: newCategories }));
+                        // Clear category error if categories were previously empty
+                        if (errors.categories && newCategories.length > 0) {
+                          setErrors(prev => ({ ...prev, categories: '' }));
+                        }
                       }}
                     >
                       ×
@@ -413,24 +418,67 @@ export function SupplierModal({ isOpen, onClose, onSave, initialData, mode, titl
                   </span>
                 ))}
               </div>
-              <div className="flex gap-2">
-                <Select
-                  value=""
-                  onChange={(e) => {
-                    if (e.target.value && !formData.categories.includes(e.target.value)) {
-                      setFormData(prev => ({
-                        ...prev,
-                        categories: [...prev.categories, e.target.value]
-                      }));
-                      if (errors.categories) {
-                        setErrors(prev => ({ ...prev, categories: '' }));
-                      }
-                    }
-                  }}
-                  options={categoryOptions}
-                  error={!!errors.categories}
-                />
-              </div>
+              <div className="flex flex-col gap-2">
+                  <div className="flex gap-2">
+                    <Select
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value && !formData.categories.includes(e.target.value)) {
+                          setFormData(prev => ({
+                            ...prev,
+                            categories: [...prev.categories, e.target.value]
+                          }));
+                          if (errors.categories) {
+                            setErrors(prev => ({ ...prev, categories: '' }));
+                          }
+                        }
+                      }}
+                      options={categoryOptions}
+                      error={!!errors.categories}
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      id="custom-category"
+                      placeholder="Or type custom category and click Add"
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const input = e.target as HTMLInputElement;
+                          if (input.value && !formData.categories.includes(input.value)) {
+                            setFormData(prev => ({
+                              ...prev,
+                              categories: [...prev.categories, input.value]
+                            }));
+                            if (errors.categories) {
+                              setErrors(prev => ({ ...prev, categories: '' }));
+                            }
+                            input.value = '';
+                          }
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                      onClick={() => {
+                        const categoryInput = document.getElementById('custom-category') as HTMLInputElement;
+                        if (categoryInput && categoryInput.value && !formData.categories.includes(categoryInput.value)) {
+                          setFormData(prev => ({
+                            ...prev,
+                            categories: [...prev.categories, categoryInput.value]
+                          }));
+                          if (errors.categories) {
+                            setErrors(prev => ({ ...prev, categories: '' }));
+                          }
+                          categoryInput.value = '';
+                        }
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
               {errors.categories && <p className="text-sm text-red-500 mt-1">{errors.categories}</p>}
             </div>
           </FormField>

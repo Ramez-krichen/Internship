@@ -90,7 +90,7 @@ export default function OrdersPage() {
     const fetchData = async () => {
       try {
         setIsLoading(true)
-        const response = await fetch('/api/orders')
+        const response = await fetch('/api/purchase-orders')
         
         if (response.ok) {
           const ordersData = await response.json()
@@ -107,9 +107,8 @@ export default function OrdersPage() {
   }, [])
   
   const handleAddOrder = async (orderData: Partial<Order>) => {
-    setIsLoading(true)
     try {
-      const response = await fetch('/api/orders', {
+      const response = await fetch('/api/purchase-orders', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -120,14 +119,14 @@ export default function OrdersPage() {
       if (response.ok) {
         const newOrder = await response.json()
         setOrders(prev => [...prev, newOrder])
-        setIsAddModalOpen(false)
+        alert('Order created successfully!')
       } else {
-        console.error('Failed to add order')
+        const errorData = await response.json()
+        alert(`Failed to create order: ${errorData.error || 'Unknown error'}`)
       }
     } catch (error) {
       console.error('Error adding order:', error)
-    } finally {
-      setIsLoading(false)
+      alert('Error creating order. Please try again.')
     }
   }
 
@@ -135,9 +134,8 @@ export default function OrdersPage() {
   const handleEditOrder = async (orderData: Partial<Order>) => {
     if (!editingOrder) return
 
-    setIsLoading(true)
     try {
-      const response = await fetch(`/api/orders/${editingOrder.id}`, {
+      const response = await fetch(`/api/purchase-orders/${editingOrder.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -148,41 +146,40 @@ export default function OrdersPage() {
       if (response.ok) {
         const updatedOrder = await response.json()
         setOrders(prev => prev.map(order => order.id === editingOrder.id ? updatedOrder : order))
-        setEditingOrder(null)
+        alert('Order updated successfully!')
       } else {
-        console.error('Failed to update order')
+        const errorData = await response.json()
+        alert(`Failed to update order: ${errorData.error || 'Unknown error'}`)
       }
     } catch (error) {
       console.error('Error updating order:', error)
-    } finally {
-      setIsLoading(false)
+      alert('Error updating order. Please try again.')
     }
   }
 
 
   const handleViewOrder = (order: Order) => {
     setViewingOrder(order)
-    setIsReadOnly(true)
-    setIsAddModalOpen(true)
   }
   
-  const handleDeleteOrder = async () => {
-    if (!orderToDelete) return
-
+  const handleDeleteOrder = async (orderId: string) => {
     setIsDeleting(true)
     try {
-      const response = await fetch(`/api/orders/${orderToDelete.id}`, {
+      const response = await fetch(`/api/purchase-orders/${orderId}`, {
         method: 'DELETE',
       })
       
       if (response.ok) {
-        setOrders(prev => prev.filter(order => order.id !== orderToDelete.id))
+        setOrders(prev => prev.filter(order => order.id !== orderId))
         setOrderToDelete(null)
+        alert('Order deleted successfully!')
       } else {
-        console.error('Failed to delete order')
+        const errorData = await response.json()
+        alert(`Failed to delete order: ${errorData.error || 'Unknown error'}`)
       }
     } catch (error) {
       console.error('Error deleting order:', error)
+      alert('Error deleting order. Please try again.')
     } finally {
       setIsDeleting(false)
     }
@@ -193,7 +190,7 @@ export default function OrdersPage() {
 
     setIsSending(true)
     try {
-      const response = await fetch(`/api/orders/${orderToSend.id}/send`, {
+      const response = await fetch(`/api/purchase-orders/${orderToSend.id}/send`, {
         method: 'POST',
       })
       
@@ -201,11 +198,14 @@ export default function OrdersPage() {
         const updatedOrder = await response.json()
         setOrders(prev => prev.map(order => order.id === orderToSend.id ? updatedOrder : order))
         setOrderToSend(null)
+        alert('Order sent successfully!')
       } else {
-        console.error('Failed to send order')
+        const errorData = await response.json()
+        alert(`Failed to send order: ${errorData.error || 'Unknown error'}`)
       }
     } catch (error) {
       console.error('Error sending order:', error)
+      alert('Error sending order. Please try again.')
     } finally {
       setIsSending(false)
     }
@@ -216,7 +216,7 @@ export default function OrdersPage() {
 
     setIsReceiving(true)
     try {
-      const response = await fetch(`/api/orders/${orderToReceive.id}/receive`, {
+      const response = await fetch(`/api/purchase-orders/${orderToReceive.id}/receive`, {
         method: 'POST',
       })
       
@@ -224,11 +224,14 @@ export default function OrdersPage() {
         const updatedOrder = await response.json()
         setOrders(prev => prev.map(order => order.id === orderToReceive.id ? updatedOrder : order))
         setOrderToReceive(null)
+        alert('Order received successfully!')
       } else {
-        console.error('Failed to receive order')
+        const errorData = await response.json()
+        alert(`Failed to receive order: ${errorData.error || 'Unknown error'}`)
       }
     } catch (error) {
       console.error('Error receiving order:', error)
+      alert('Error receiving order. Please try again.')
     } finally {
       setIsReceiving(false)
     }
@@ -551,17 +554,11 @@ export default function OrdersPage() {
 
       {/* Add Order Modal */}
       <OrderModal
-        isOpen={isAddModalOpen}
-        onClose={() => {
-          setIsAddModalOpen(false)
-          setEditingOrder(null)
-          setViewingOrder(null)
-          setIsReadOnly(false)
-        }}
-        onSave={editingOrder ? handleEditOrder : handleAddOrder}
-        order={editingOrder || viewingOrder}
-        mode={editingOrder ? 'edit' : (viewingOrder ? 'view' : 'add')}
-        readOnly={isReadOnly}
+        isOpen={isAddModalOpen && !editingOrder && !viewingOrder}
+        onClose={() => setIsAddModalOpen(false)}
+        onSave={handleAddOrder}
+        mode="add"
+        title="Add New Order"
       />
 
       {/* Edit Order Modal */}
@@ -569,18 +566,19 @@ export default function OrdersPage() {
         isOpen={!!editingOrder}
         onClose={() => setEditingOrder(null)}
         onSave={handleEditOrder}
+        order={editingOrder}
         mode="edit"
         title="Edit Order"
-        initialData={editingOrder || undefined}
       />
 
       {/* View Order Modal */}
       <OrderModal
         isOpen={!!viewingOrder}
         onClose={() => setViewingOrder(null)}
+        order={viewingOrder}
         mode="view"
         title="Order Details"
-        initialData={viewingOrder || undefined}
+        readOnly={true}
       />
 
       {/* Delete Confirmation Modal */}
@@ -598,7 +596,7 @@ export default function OrdersPage() {
       <ConfirmationModal
         isOpen={!!orderToSend}
         onClose={() => setOrderToSend(null)}
-        onConfirm={() => handleSendOrder(orderToSend?.id || '')}
+        onConfirm={handleSendOrder}
         type="send"
         entityType="Order"
         entityName={orderToSend?.orderNumber || ''}

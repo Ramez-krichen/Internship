@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs'
 import { db } from './db'
 
 export const authOptions: NextAuthOptions = {
+  secret: process.env.NEXTAUTH_SECRET,
   providers: [
     CredentialsProvider({
       name: 'credentials',
@@ -32,8 +33,11 @@ export const authOptions: NextAuthOptions = {
         )
 
         if (!isPasswordValid) {
+          console.log('Password validation failed for:', credentials.email)
           return null
         }
+        
+        console.log('Authentication successful for:', credentials.email)
 
         // Update lastSignIn time
         await db.user.update({

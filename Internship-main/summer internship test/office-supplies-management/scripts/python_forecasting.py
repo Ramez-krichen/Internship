@@ -13,13 +13,13 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 
 # Connect to the SQLite database
-conn = sqlite3.connect('../prisma/dev.db')
+conn = sqlite3.connect('prisma/dev.db')
 
 # Function to load data from the database
 def load_data():
     # Get stock movements data
     stock_movements = pd.read_sql("""
-        SELECT 
+        SELECT
             sm.id, sm.itemId, sm.type, sm.quantity, sm.createdAt,
             i.name as item_name, i.reference, i.unit, i.categoryId
         FROM stock_movements sm
@@ -33,7 +33,7 @@ def load_data():
     
     # Get items data
     items = pd.read_sql("""
-        SELECT 
+        SELECT
             i.id, i.name, i.reference, i.unit, i.price, i.minStock, i.currentStock,
             c.name as category_name
         FROM items i
@@ -42,8 +42,8 @@ def load_data():
     
     # Get existing forecasts
     forecasts = pd.read_sql("""
-        SELECT 
-            df.id, df.itemId, df.period, df.periodType, df.predictedDemand, 
+        SELECT
+            df.id, df.itemId, df.period, df.periodType, df.predictedDemand,
             df.actualDemand, df.confidence, df.algorithm, df.factors, df.createdAt,
             i.name as item_name
         FROM demand_forecasts df
@@ -267,7 +267,9 @@ def generate_next_periods(last_period, period_type, num_periods=3):
             next_date = last_date + pd.DateOffset(years=i)
             next_period = str(next_date.year)
         
+        # next_period is always assigned in the if/elif blocks above
         next_periods.append(next_period)
+            next_periods.append(next_period)
     
     return next_periods
 

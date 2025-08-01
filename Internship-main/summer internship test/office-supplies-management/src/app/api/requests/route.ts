@@ -171,6 +171,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
+    console.log('Request body:', JSON.stringify(body, null, 2))
+    
     const {
       title,
       description,
@@ -181,11 +183,39 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!title || !department || !items || !items.length) {
+      console.log('Validation failed:', { title: !!title, department: !!department, items: items?.length })
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
       )
     }
+
+    // Validate items have required fields
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (!item.itemId || !item.quantity || !item.unitPrice) {
+        console.log(`Item ${i} validation failed:`, item)
+        return NextResponse.json(
+          { error: `Item ${i + 1} is missing required fields (itemId, quantity, or unitPrice)` },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Verify user exists in database
+    const user = await db.user.findUnique({
+      where: { id: session.user.id }
+    })
+    
+    if (!user) {
+      console.log('User not found in database:', session.user.id)
+      return NextResponse.json(
+        { error: 'User not found in database' },
+        { status: 400 }
+      )
+    }
+    
+    console.log('User found:', { id: user.id, email: user.email, name: user.name })
 
     // Calculate total amount
     const totalAmount = items.reduce(

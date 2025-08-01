@@ -51,7 +51,7 @@ interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   placeholder?: string
 }
 
-export function Select({ error, options, placeholder, className = '', ...props }: SelectProps) {
+export function Select({ error, options = [], placeholder, className = '', children, ...props }: SelectProps & { children?: React.ReactNode }) {
   const baseClasses = 'block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors'
   const errorClasses = error ? 'border-red-300' : 'border-gray-300'
   
@@ -63,7 +63,7 @@ export function Select({ error, options, placeholder, className = '', ...props }
       {placeholder && (
         <option value="">{placeholder}</option>
       )}
-      {options.map((option) => (
+      {children || options.map((option) => (
         <option key={option.value} value={option.value}>
           {option.label}
         </option>

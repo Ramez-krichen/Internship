@@ -2,10 +2,11 @@
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { useState, useEffect } from 'react'
-import { Plus, Search, AlertTriangle, Package, Edit, Trash2, Eye, Calendar, Filter } from 'lucide-react'
+import { Plus, Search, AlertTriangle, Package, Edit, Trash2, Eye, Calendar, Filter, ShoppingCart } from 'lucide-react'
 import { InventoryModal, ViewInventoryModal } from '../../components/modals/InventoryModal'
 import { ConfirmModal } from '../../components/ui/modal'
 import { ConfirmationModal } from '../../components/ui/confirmation-modal'
+import { PurchaseOrderModal } from '../../components/modals/PurchaseOrderModal'
 import { DateRange } from '../../components/ui/form'
 import { ExportButton } from '../../components/ui/export'
 
@@ -49,15 +50,17 @@ export default function InventoryPage() {
   const [viewingItem, setViewingItem] = useState<InventoryItem | null>(null)
   const [deletingItem, setDeletingItem] = useState<InventoryItem | null>(null)
   const [deactivatingItem, setDeactivatingItem] = useState<InventoryItem | null>(null)
+  const [purchaseOrderModal, setPurchaseOrderModal] = useState<{ isOpen: boolean; item: InventoryItem | null }>({ isOpen: false, item: null })
   const [isDeleting, setIsDeleting] = useState(false)
   const [isDeactivating, setIsDeactivating] = useState(false)
   
   // Data state
   const [items, setItems] = useState<InventoryItem[]>([])
   const [suppliers, setSuppliers] = useState<{id: string, name: string}[]>([])
+  const [categories, setCategories] = useState<{id: string, name: string}[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  const categories = ['ALL', ...Array.from(new Set(items.map(item => item.category)))]
+  const categoryOptions = ['ALL', ...Array.from(new Set(items.map(item => item.category)))]
   const statuses = ['ALL', 'in-stock', 'low-stock', 'out-of-stock', 'discontinued']
   const ecoOptions = ['ALL', 'eco-friendly', 'recyclable', 'non-eco']
 
@@ -96,9 +99,10 @@ export default function InventoryPage() {
     const fetchData = async () => {
       try {
         setIsLoading(true)
-        const [itemsResponse, suppliersResponse] = await Promise.all([
+        const [itemsResponse, suppliersResponse, categoriesResponse] = await Promise.all([
           fetch('/api/items'),
-          fetch('/api/suppliers')
+          fetch('/api/suppliers'),
+          fetch('/api/categories')
         ])
         
         if (itemsResponse.ok) {
@@ -109,6 +113,11 @@ export default function InventoryPage() {
         if (suppliersResponse.ok) {
           const suppliersData = await suppliersResponse.json()
           setSuppliers(suppliersData.suppliers || [])
+        }
+        
+        if (categoriesResponse.ok) {
+          const categoriesData = await categoriesResponse.json()
+          setCategories(categoriesData.categories || [])
         }
       } catch (error) {
         console.error('Error fetching data:', error)
@@ -124,12 +133,45 @@ export default function InventoryPage() {
   const handleAddItem = async (itemData: Omit<InventoryItem, 'id' | 'lastUpdated' | 'status'>) => {
     setIsLoading(true)
     try {
+      // Find category ID by name
+      const categoryId = categories.find(cat => cat.name === itemData.category)?.id
+      // Find supplier ID by name
+      const supplierId = suppliers.find(sup => sup.name === itemData.supplier)?.id
+      
+      if (!categoryId) {
+        console.error('Category not found:', itemData.category)
+        return
+      }
+      
+      if (!supplierId) {
+        console.error('Supplier not found:', itemData.supplier)
+        return
+      }
+      
+      // Map frontend field names to backend field names
+      const mappedData = {
+        name: itemData.name,
+        description: itemData.description,
+        reference: itemData.sku, // sku maps to reference
+        unit: itemData.unit,
+        price: itemData.unitPrice, // unitPrice maps to price
+        minStock: itemData.minStock,
+        currentStock: itemData.quantity, // quantity maps to currentStock
+        categoryId: categoryId,
+        supplierId: supplierId,
+        isActive: true,
+        isEcoFriendly: itemData.isEcoFriendly,
+        ecoRating: itemData.ecoRating,
+        carbonFootprint: itemData.carbonFootprint,
+        recyclable: itemData.recyclable
+      }
+      
       const response = await fetch('/api/items', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(itemData),
+        body: JSON.stringify(mappedData),
       })
       
       if (response.ok) {
@@ -137,7 +179,8 @@ export default function InventoryPage() {
         setItems(prev => [...prev, newItem])
         setIsAddModalOpen(false)
       } else {
-        console.error('Failed to add item')
+        const errorData = await response.json()
+        console.error('Failed to add item:', errorData)
       }
     } catch (error) {
       console.error('Error adding item:', error)
@@ -151,23 +194,78 @@ export default function InventoryPage() {
     
     setIsLoading(true)
     try {
+      // Find category ID by name
+      const categoryId = categories.find(cat => cat.name === itemData.category)?.id || null
+      // Find supplier ID by name
+      const supplierId = suppliers.find(sup => sup.name === itemData.supplier)?.id || null
+      
+      // Map frontend field names to backend field names
+      const mappedData = {
+        name: itemData.name,
+        description: itemData.description,
+        reference: itemData.sku, // sku maps to reference
+        unit: itemData.unit,
+        price: itemData.unitPrice, // unitPrice maps to price
+        minStock: itemData.minStock,
+        currentStock: itemData.quantity, // quantity maps to currentStock
+        categoryId: categoryId,
+        supplierId: supplierId,
+        isActive: true,
+        isEcoFriendly: itemData.isEcoFriendly,
+        ecoRating: itemData.ecoRating,
+        carbonFootprint: itemData.carbonFootprint,
+        recyclable: itemData.recyclable
+      }
+      
       const response = await fetch(`/api/items/${editingItem.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(itemData),
+        body: JSON.stringify(mappedData),
       })
       
       if (response.ok) {
         const updatedItem = await response.json()
-        setItems(prev => prev.map(item => item.id === editingItem.id ? updatedItem : item))
+        // Map backend response back to frontend format
+        const frontendItem = {
+          id: updatedItem.id,
+          name: updatedItem.name,
+          category: updatedItem.category?.name || itemData.category,
+          sku: updatedItem.reference,
+          description: updatedItem.description,
+          quantity: updatedItem.currentStock,
+          unit: updatedItem.unit,
+          minStock: updatedItem.minStock,
+          maxStock: updatedItem.maxStock || itemData.maxStock,
+          unitPrice: updatedItem.price,
+          supplier: updatedItem.supplier?.name || itemData.supplier,
+          location: itemData.location,
+          status: getStockStatus({
+            ...itemData,
+            quantity: updatedItem.currentStock,
+            isActive: updatedItem.isActive
+          }).status.toLowerCase().replace(' ', '-'),
+          lastUpdated: updatedItem.updatedAt,
+          expiryDate: itemData.expiryDate,
+          isActive: updatedItem.isActive,
+          isEcoFriendly: updatedItem.isEcoFriendly,
+          ecoRating: updatedItem.ecoRating,
+          carbonFootprint: updatedItem.carbonFootprint,
+          recyclable: updatedItem.recyclable
+        }
+        
+        setItems(prev => prev.map(item => item.id === editingItem.id ? frontendItem : item))
         setEditingItem(null)
+        alert('Item updated successfully!')
       } else {
-        console.error('Failed to update item')
+        const errorData = await response.json()
+        console.error('Failed to update item:', errorData)
+        alert(`Failed to update item: ${errorData.error || 'Unknown error'}`)
       }
     } catch (error) {
       console.error('Error updating item:', error)
+      alert(`Error updating item: ${error.message}`)
     } finally {
       setIsLoading(false)
     }
@@ -215,6 +313,27 @@ export default function InventoryPage() {
     }
   }
 
+  const handleCreatePurchaseOrder = async (orderData: any) => {
+    try {
+      const response = await fetch('/api/purchase-orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(orderData),
+      })
+
+      if (response.ok) {
+        console.log('Purchase order created successfully')
+        setPurchaseOrderModal({ isOpen: false, item: null })
+      } else {
+        throw new Error('Failed to create purchase order')
+      }
+    } catch (error) {
+      console.error('Error creating purchase order:', error)
+    }
+  }
+
   const handleViewItem = (item: InventoryItem) => {
     setViewingItem(item)
   }
@@ -256,8 +375,8 @@ export default function InventoryPage() {
     Unit: item.unit,
     'Min Stock': item.minStock,
     'Max Stock': item.maxStock,
-    'Unit Price': item.unitPrice,
-    'Total Value': (item.quantity * item.unitPrice).toFixed(2),
+    'Unit Price': item.unitPrice || 0,
+    'Total Value': ((item.quantity || 0) * (item.unitPrice || 0)).toFixed(2),
     Supplier: item.supplier,
     Location: item.location,
     Status: item.status,
@@ -357,7 +476,7 @@ export default function InventoryPage() {
                 onChange={(e) => setCategoryFilter(e.target.value)}
                 className="border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
               >
-                {categories.map(category => (
+                {categoryOptions.map(category => (
                   <option key={category} value={category}>
                     {category === 'ALL' ? 'All Categories' : category}
                   </option>
@@ -382,7 +501,7 @@ export default function InventoryPage() {
               >
                 {statuses.map(status => (
                   <option key={status} value={status}>
-                    {status === 'ALL' ? 'All Statuses' : status.replace('-', ' ')}
+                    {status === 'ALL' ? 'All Statuses' : (status || 'in-stock').replace('-', ' ')}
                   </option>
                 ))}
               </select>
@@ -439,7 +558,7 @@ export default function InventoryPage() {
             {searchTerm && ` for "${searchTerm}"`}
           </span>
           <span>
-            Total Value: ${filteredItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0).toFixed(2)}
+            Total Value: ${filteredItems.reduce((sum, item) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0).toFixed(2)}
           </span>
         </div>
 
@@ -505,15 +624,15 @@ export default function InventoryPage() {
                       </td>
                       <td className="px-6 py-4">
                         <div className="text-sm text-gray-900">
-                          ${item.unitPrice.toFixed(2)}
+                          ${item.unitPrice?.toFixed(2) || '0.00'}
                         </div>
                         <div className="text-xs text-gray-500">
-                          Total: ${(item.quantity * item.unitPrice).toFixed(2)}
+                          Total: ${((item.quantity || 0) * (item.unitPrice || 0)).toFixed(2)}
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadgeColor(item.status)}`}>
-                          {item.status.replace('-', ' ')}
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadgeColor(item.status || 'in-stock')}`}>
+                          {(item.status || 'in-stock').replace('-', ' ')}
                         </span>
                         <div className={`text-xs mt-1 ${stockStatus.color}`}>
                           {stockStatus.status}
@@ -539,6 +658,16 @@ export default function InventoryPage() {
                           >
                             <Edit className="h-4 w-4" />
                           </button>
+                          {(item.quantity <= item.minStock && item.isActive) && (
+                            <button 
+                              onClick={() => setPurchaseOrderModal({ isOpen: true, item })}
+                              className="text-green-600 hover:text-green-900 p-1 rounded transition-colors hover:bg-green-50"
+                              title="Create purchase order"
+                              disabled={isLoading}
+                            >
+                              <ShoppingCart className="h-4 w-4" />
+                            </button>
+                          )}
                           {item.isActive ? (
                             <button 
                               onClick={() => setDeactivatingItem(item)}
@@ -597,6 +726,7 @@ export default function InventoryPage() {
         onSave={handleAddItem}
         mode="add"
         suppliers={suppliers}
+        categories={categories}
       />
 
       <InventoryModal
@@ -606,6 +736,7 @@ export default function InventoryPage() {
         item={editingItem}
         mode="edit"
         suppliers={suppliers}
+        categories={categories}
       />
 
       <ViewInventoryModal
@@ -633,6 +764,15 @@ export default function InventoryPage() {
         entityName={deactivatingItem?.name}
         isLoading={isDeactivating}
         customMessage="This will mark the item as discontinued but keep it in the system for historical records."
+      />
+
+      <PurchaseOrderModal
+        isOpen={purchaseOrderModal.isOpen}
+        onClose={() => setPurchaseOrderModal({ isOpen: false, item: null })}
+        onSave={handleCreatePurchaseOrder}
+        suppliers={suppliers}
+        preselectedItem={purchaseOrderModal.item || undefined}
+        mode="create"
       />
     </DashboardLayout>
   )

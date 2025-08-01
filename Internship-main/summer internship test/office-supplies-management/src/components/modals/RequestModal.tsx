@@ -263,11 +263,35 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
       const updatedItems = [...prev.items];
       const updatedItem = { ...updatedItems[index], [field]: value };
       
-      // If updating itemId, also update the name from available items
-      if (field === 'itemId' && typeof value === 'string') {
+      // If updating itemId, also update the name and fetch price from database
+      if (field === 'itemId' && typeof value === 'string' && value) {
         const selectedItem = availableItems.find(item => item.id === value);
         if (selectedItem) {
           updatedItem.name = selectedItem.name;
+          
+          // Fetch item details including price from database
+          fetch(`/api/items/${value}`)
+            .then(res => res.json())
+            .then(itemData => {
+              setFormData(prevData => ({
+                ...prevData,
+                items: prevData.items.map((prevItem, prevIndex) => {
+                  if (prevIndex === index) {
+                    const newItem = { 
+                      ...prevItem, 
+                      unitPrice: itemData.price || 0
+                    }
+                    newItem.totalPrice = newItem.quantity * newItem.unitPrice
+                    return newItem
+                  }
+                  return prevItem
+                })
+              }))
+            })
+            .catch(error => {
+              console.error('Error fetching item details:', error)
+              toast.error('Failed to load item price')
+            })
         }
       }
       
@@ -358,6 +382,7 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
               type="date"
               value={formData.expectedDelivery}
               onChange={(e) => handleInputChange('expectedDelivery', e.target.value)}
+              min={new Date().toISOString().split('T')[0]}
               error={!!errors.expectedDelivery}
             />
           </FormField>

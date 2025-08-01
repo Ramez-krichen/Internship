@@ -1,11 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { signIn, getSession } from 'next-auth/react'
+import { getSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { useAuth } from '@/hooks/use-auth'
 
 const signInSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -15,9 +16,8 @@ const signInSchema = z.object({
 type SignInForm = z.infer<typeof signInSchema>
 
 export default function SignInPage() {
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState('')
   const router = useRouter()
+  const { login, isLoading, error } = useAuth()
 
   const {
     register,
@@ -28,26 +28,7 @@ export default function SignInPage() {
   })
 
   const onSubmit = async (data: SignInForm) => {
-    setIsLoading(true)
-    setError('')
-
-    try {
-      const result = await signIn('credentials', {
-        email: data.email,
-        password: data.password,
-        redirect: false,
-      })
-
-      if (result?.error) {
-        setError('Invalid email or password')
-      } else {
-        router.push('/dashboard')
-      }
-    } catch (error) {
-      setError('An error occurred. Please try again.')
-    } finally {
-      setIsLoading(false)
-    }
+    await login(data.email, data.password)
   }
 
   return (

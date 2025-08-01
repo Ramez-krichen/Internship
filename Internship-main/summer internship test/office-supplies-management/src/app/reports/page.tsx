@@ -10,67 +10,96 @@ import {
   Download,
   Calendar
 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 
-const reportCards = [
-  {
-    title: 'Monthly Spending',
-    value: '$12,450',
-    change: '+8.2%',
-    changeType: 'increase',
-    icon: DollarSign,
-    description: 'Total spending this month',
-  },
-  {
-    title: 'Requests Processed',
-    value: '156',
-    change: '+12.5%',
-    changeType: 'increase',
-    icon: FileText,
-    description: 'Requests completed this month',
-  },
-  {
-    title: 'Items Ordered',
-    value: '2,340',
-    change: '-3.1%',
-    changeType: 'decrease',
-    icon: Package,
-    description: 'Total items ordered this month',
-  },
-  {
-    title: 'Average Order Value',
-    value: '$89.50',
-    change: '+5.7%',
-    changeType: 'increase',
-    icon: TrendingUp,
-    description: 'Average value per order',
-  },
-]
+interface ReportCard {
+  title: string
+  value: string
+  change: string
+  changeType: 'increase' | 'decrease'
+  description: string
+}
 
-const topCategories = [
-  { name: 'Office Supplies', amount: 4250, percentage: 34 },
-  { name: 'Technology', amount: 3100, percentage: 25 },
-  { name: 'Cleaning Supplies', amount: 2800, percentage: 23 },
-  { name: 'Furniture', amount: 1500, percentage: 12 },
-  { name: 'Other', amount: 800, percentage: 6 },
-]
+interface Category {
+  name: string
+  amount: number
+  percentage: number
+}
 
-const topSuppliers = [
-  { name: 'Office Depot', orders: 24, amount: 5200 },
-  { name: 'Staples Inc.', orders: 18, amount: 3800 },
-  { name: 'CleanCorp Solutions', orders: 12, amount: 2100 },
-  { name: 'TechSupply Pro', orders: 8, amount: 1900 },
-]
+interface Supplier {
+  name: string
+  orders: number
+  amount: number
+}
 
-const monthlyTrend = [
-  { month: 'Jan', amount: 8500 },
-  { month: 'Feb', amount: 9200 },
-  { month: 'Mar', amount: 8800 },
-  { month: 'Apr', amount: 10100 },
-  { month: 'May', amount: 11200 },
-  { month: 'Jun', amount: 12450 },
-]
+interface MonthlyData {
+  month: string
+  amount: number
+}
+
+interface AnalyticsData {
+  reportCards: ReportCard[]
+  topCategories: Category[]
+  topSuppliers: Supplier[]
+  monthlyTrend: MonthlyData[]
+}
 
 export default function ReportsPage() {
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const router = useRouter()
+
+  useEffect(() => {
+    fetchAnalytics()
+  }, [])
+
+  const fetchAnalytics = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/reports/analytics')
+      if (!response.ok) {
+        throw new Error('Failed to fetch analytics')
+      }
+      const data = await response.json()
+      setAnalyticsData(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-lg text-gray-600">Loading analytics...</div>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
+  if (error || !analyticsData) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-lg text-red-600">Error: {error || 'Failed to load data'}</div>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
+  const { reportCards, topCategories, topSuppliers, monthlyTrend } = analyticsData
+
+  const iconMap = {
+    'Monthly Spending': DollarSign,
+    'Requests Processed': FileText,
+    'Items Ordered': Package,
+    'Average Order Value': TrendingUp,
+  }
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -93,12 +122,14 @@ export default function ReportsPage() {
 
         {/* Key Metrics */}
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {reportCards.map((card) => (
+          {reportCards.map((card) => {
+            const IconComponent = iconMap[card.title as keyof typeof iconMap] || DollarSign
+            return (
             <div key={card.title} className="bg-white overflow-hidden shadow rounded-lg">
               <div className="p-5">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <card.icon className="h-6 w-6 text-gray-400" />
+                    <IconComponent className="h-6 w-6 text-gray-400" />
                   </div>
                   <div className="ml-5 w-0 flex-1">
                     <dl>
@@ -128,8 +159,8 @@ export default function ReportsPage() {
                 </div>
               </div>
             </div>
-          ))}
-        </div>
+          )})
+        }</div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Spending by Category */}
@@ -187,11 +218,11 @@ export default function ReportsPage() {
               {/* Y-axis labels */}
               <div className="absolute left-0 top-0 bottom-0 w-12 flex flex-col justify-between text-xs text-gray-500">
                 {[...Array(5)].map((_, i) => {
-                  const maxAmount = Math.max(...monthlyTrend.map(m => m.amount))
+                  const maxAmount = Math.max(...monthlyTrend.map(m => m.amount), 1)
                   const value = maxAmount - (i * (maxAmount / 4))
                   return (
                     <div key={i} className="flex items-center">
-                      <span>${(value / 1000).toFixed(1)}k</span>
+                      <span>${value > 1000 ? (value / 1000).toFixed(1) + 'k' : value.toFixed(0)}</span>
                     </div>
                   )
                 })}
@@ -206,35 +237,37 @@ export default function ReportsPage() {
               
               {/* Line chart */}
               <div className="absolute left-12 right-0 top-0 bottom-0">
-                <svg className="w-full h-full" viewBox={`0 0 ${monthlyTrend.length * 100} 100`} preserveAspectRatio="none">
-                  <path
-                    d={monthlyTrend.map((month, i) => {
-                      const maxAmount = Math.max(...monthlyTrend.map(m => m.amount))
-                      const x = (i / (monthlyTrend.length - 1)) * 100 * (monthlyTrend.length - 1)
+                {monthlyTrend.length > 0 && (
+                  <svg className="w-full h-full" viewBox={`0 0 ${monthlyTrend.length * 100} 100`} preserveAspectRatio="none">
+                    <path
+                      d={monthlyTrend.map((month, i) => {
+                        const maxAmount = Math.max(...monthlyTrend.map(m => m.amount), 1)
+                        const x = (i / Math.max(monthlyTrend.length - 1, 1)) * 100 * Math.max(monthlyTrend.length - 1, 1)
+                        const y = 100 - ((month.amount / maxAmount) * 100)
+                        return `${i === 0 ? 'M' : 'L'} ${x} ${y}`
+                      }).join(' ')}
+                      fill="none"
+                      stroke="#4f46e5"
+                      strokeWidth="2"
+                    />
+                    
+                    {/* Data points */}
+                    {monthlyTrend.map((month, i) => {
+                      const maxAmount = Math.max(...monthlyTrend.map(m => m.amount), 1)
+                      const x = (i / Math.max(monthlyTrend.length - 1, 1)) * 100 * Math.max(monthlyTrend.length - 1, 1)
                       const y = 100 - ((month.amount / maxAmount) * 100)
-                      return `${i === 0 ? 'M' : 'L'} ${x} ${y}`
-                    }).join(' ')}
-                    fill="none"
-                    stroke="#4f46e5"
-                    strokeWidth="2"
-                  />
-                  
-                  {/* Data points */}
-                  {monthlyTrend.map((month, i) => {
-                    const maxAmount = Math.max(...monthlyTrend.map(m => m.amount))
-                    const x = (i / (monthlyTrend.length - 1)) * 100 * (monthlyTrend.length - 1)
-                    const y = 100 - ((month.amount / maxAmount) * 100)
-                    return (
-                      <circle
-                        key={i}
-                        cx={x}
-                        cy={y}
-                        r="3"
-                        fill="#4f46e5"
-                      />
-                    )
-                  })}
-                </svg>
+                      return (
+                        <circle
+                          key={i}
+                          cx={x}
+                          cy={y}
+                          r="3"
+                          fill="#4f46e5"
+                        />
+                      )
+                    })}
+                  </svg>
+                )}
               </div>
               
               {/* X-axis labels */}
@@ -251,17 +284,26 @@ export default function ReportsPage() {
         <div className="bg-white shadow rounded-lg p-6">
           <h3 className="text-lg font-medium text-gray-900 mb-4">Quick Reports</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <button className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left">
+            <button 
+              onClick={() => router.push('/quick-reports?type=consumption')}
+              className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left transition-colors"
+            >
               <BarChart3 className="h-6 w-6 text-indigo-600 mb-2" />
               <div className="font-medium text-gray-900">Consumption Report</div>
               <div className="text-sm text-gray-500">Items consumed by department</div>
             </button>
-            <button className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left">
+            <button 
+              onClick={() => router.push('/quick-reports?type=cost')}
+              className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left transition-colors"
+            >
               <DollarSign className="h-6 w-6 text-green-600 mb-2" />
               <div className="font-medium text-gray-900">Cost Analysis</div>
               <div className="text-sm text-gray-500">Detailed cost breakdown</div>
             </button>
-            <button className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left">
+            <button 
+              onClick={() => router.push('/quick-reports?type=forecast')}
+              className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left transition-colors"
+            >
               <TrendingUp className="h-6 w-6 text-blue-600 mb-2" />
               <div className="font-medium text-gray-900">Forecast Report</div>
               <div className="text-sm text-gray-500">Demand forecasting</div>

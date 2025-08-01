@@ -14,7 +14,7 @@ pacman::p_load(
 )
 
 # Connect to the SQLite database
-conn <- dbConnect(RSQLite::SQLite(), "../prisma/dev.db")
+conn <- dbConnect(RSQLite::SQLite(), "prisma/dev.db")
 
 # Function to load data from the database
 load_data <- function() {

@@ -465,34 +465,42 @@ async function main() {
   // Create request items
   const requestItems = [
     // Request 1 items (Office Supplies for Q1)
-    { requestId: createdRequests[0].id, itemId: createdItems[0].id, quantity: 5 }, // Blue Pens
-    { requestId: createdRequests[0].id, itemId: createdItems[1].id, quantity: 10 }, // A4 Paper
-    { requestId: createdRequests[0].id, itemId: createdItems[3].id, quantity: 2 }, // Notebooks
+    { requestId: createdRequests[0].id, itemId: createdItems[0].id, quantity: 5, unitPrice: 12.99, totalPrice: 64.95 }, // Blue Pens
+    { requestId: createdRequests[0].id, itemId: createdItems[1].id, quantity: 10, unitPrice: 8.50, totalPrice: 85.00 }, // A4 Paper
+    { requestId: createdRequests[0].id, itemId: createdItems[3].id, quantity: 2, unitPrice: 15.99, totalPrice: 31.98 }, // Notebooks
     
     // Request 2 items (Cleaning Supplies Restock)
-    { requestId: createdRequests[1].id, itemId: createdItems[9].id, quantity: 3 }, // All-Purpose Cleaner
-    { requestId: createdRequests[1].id, itemId: createdItems[10].id, quantity: 2 }, // Paper Towels
-    { requestId: createdRequests[1].id, itemId: createdItems[11].id, quantity: 1 }, // Disinfectant Wipes
+    { requestId: createdRequests[1].id, itemId: createdItems[9].id, quantity: 3, unitPrice: 6.75, totalPrice: 20.25 }, // All-Purpose Cleaner
+    { requestId: createdRequests[1].id, itemId: createdItems[10].id, quantity: 2, unitPrice: 24.99, totalPrice: 49.98 }, // Paper Towels
+    { requestId: createdRequests[1].id, itemId: createdItems[11].id, quantity: 1, unitPrice: 18.99, totalPrice: 18.99 }, // Disinfectant Wipes
     
     // Request 3 items (Technology Equipment Upgrade)
-    { requestId: createdRequests[2].id, itemId: createdItems[6].id, quantity: 3 }, // LED Monitors
-    { requestId: createdRequests[2].id, itemId: createdItems[7].id, quantity: 3 }, // Keyboard/Mouse Sets
+    { requestId: createdRequests[2].id, itemId: createdItems[6].id, quantity: 3, unitPrice: 199.99, totalPrice: 599.97 }, // LED Monitors
+    { requestId: createdRequests[2].id, itemId: createdItems[7].id, quantity: 3, unitPrice: 45.99, totalPrice: 137.97 }, // Keyboard/Mouse Sets
     
     // Request 4 items (Kitchen Supplies Monthly Order)
-    { requestId: createdRequests[3].id, itemId: createdItems[14].id, quantity: 4 }, // Coffee K-Cups
-    { requestId: createdRequests[3].id, itemId: createdItems[15].id, quantity: 2 }, // Disposable Cups
+    { requestId: createdRequests[3].id, itemId: createdItems[14].id, quantity: 4, unitPrice: 16.99, totalPrice: 67.96 }, // Coffee K-Cups
+    { requestId: createdRequests[3].id, itemId: createdItems[15].id, quantity: 2, unitPrice: 12.99, totalPrice: 25.98 }, // Disposable Cups
     
     // Request 5 items (Safety Equipment Inspection)
-    { requestId: createdRequests[4].id, itemId: createdItems[16].id, quantity: 2 }, // Fire Extinguisher
-    { requestId: createdRequests[4].id, itemId: createdItems[17].id, quantity: 1 }, // First Aid Kit
+    { requestId: createdRequests[4].id, itemId: createdItems[16].id, quantity: 2, unitPrice: 45.99, totalPrice: 91.98 }, // Fire Extinguisher
+    { requestId: createdRequests[4].id, itemId: createdItems[17].id, quantity: 1, unitPrice: 29.99, totalPrice: 29.99 }, // First Aid Kit
     
     // Request 6 items (Furniture for New Hires)
-    { requestId: createdRequests[5].id, itemId: createdItems[12].id, quantity: 3 }, // Office Chairs
-    { requestId: createdRequests[5].id, itemId: createdItems[13].id, quantity: 3 }, // Standing Desks
+    { requestId: createdRequests[5].id, itemId: createdItems[12].id, quantity: 3, unitPrice: 299.99, totalPrice: 899.97 }, // Office Chairs
+    { requestId: createdRequests[5].id, itemId: createdItems[13].id, quantity: 3, unitPrice: 199.99, totalPrice: 599.97 }, // Standing Desks
   ]
 
   for (const requestItem of requestItems) {
-    await prisma.requestItem.create({ data: requestItem })
+    await prisma.requestItem.create({
+      data: {
+        requestId: requestItem.requestId,
+        itemId: requestItem.itemId,
+        quantity: requestItem.quantity,
+        unitPrice: requestItem.unitPrice,
+        totalPrice: requestItem.totalPrice
+      }
+    })
   }
 
   // Create approvals

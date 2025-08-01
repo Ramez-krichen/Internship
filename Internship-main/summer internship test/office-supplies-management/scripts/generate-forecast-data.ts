@@ -5,16 +5,18 @@ const prisma = new PrismaClient();
 
 // Configuration
 const CONFIG = {
-  NUM_ITEMS: 30,
-  NUM_CATEGORIES: 5,
-  NUM_SUPPLIERS: 10,
-  NUM_STOCK_MOVEMENTS_PER_ITEM: 100,
-  MONTHS_OF_HISTORY: 24,
-  START_DATE: new Date(new Date().getFullYear() - 2, 0, 1), // 2 years ago
+  NUM_ITEMS: 50, // Increased from 30
+  NUM_CATEGORIES: 8, // Increased from 5
+  NUM_SUPPLIERS: 15, // Increased from 10
+  NUM_STOCK_MOVEMENTS_PER_ITEM: 200, // Increased from 100
+  MONTHS_OF_HISTORY: 36, // Increased from 24 (3 years of history)
+  START_DATE: new Date(new Date().getFullYear() - 3, 0, 1), // 3 years ago
   END_DATE: new Date(), // Current date
   SEASONAL_PATTERNS: true, // Enable seasonal patterns in stock movements
   TREND_PATTERNS: true, // Enable trend patterns (increasing/decreasing demand over time)
   GENERATE_FORECASTS: true, // Generate initial forecasts
+  GENERATE_PYTHON_FORECASTS: true, // Generate forecasts using Python
+  GENERATE_R_FORECASTS: true, // Generate forecasts using R
 };
 
 // Helper function to generate a random date within a range
@@ -154,7 +156,7 @@ async function generateItems(categories: any[], suppliers: any[]) {
       isActive: true,
       isEcoFriendly: faker.helpers.arrayElement([true, false]),
       ecoRating: faker.number.int({ min: 1, max: 5 }),
-      carbonFootprint: parseFloat(faker.number.float({ min: 0.1, max: 10, precision: 0.1 }).toFixed(1)),
+      carbonFootprint: parseFloat(faker.number.float({ min: 0.1, max: 10 }).toFixed(1)),
       recyclable: faker.helpers.arrayElement([true, false]),
       categoryId: category.id,
       supplierId: supplier.id,
@@ -194,62 +196,8 @@ async function generateItems(categories: any[], suppliers: any[]) {
   
   return await prisma.item.findMany();
 }
-
-// Function to generate a seasonal pattern (monthly factors)
-function generateSeasonalPattern() {
-  // Different seasonal patterns:
-  // 1. Summer peak (higher in summer months)
-  // 2. Winter peak (higher in winter months)
-  // 3. Quarterly peak (higher at end of each quarter)
-  // 4. Biannual peak (higher twice a year)
-  // 5. Steady increase (gradually increasing throughout the year)
   
-  const patternType = faker.number.int({ min: 1, max: 5 });
-  
-  // Create an array of 12 factors (one per month)
-  const seasonalFactors = new Array(12).fill(1.0); // Default is no seasonality
-  
-  switch (patternType) {
-    case 1: // Summer peak
-      // Higher in June, July, August
-      seasonalFactors[5] = 1.5; // June
-      seasonalFactors[6] = 1.8; // July
-      seasonalFactors[7] = 1.6; // August
-      break;
-      
-    case 2: // Winter peak
-      // Higher in November, December, January
-      seasonalFactors[10] = 1.5; // November
-      seasonalFactors[11] = 1.9; // December
-      seasonalFactors[0] = 1.4;  // January
-      break;
-      
-    case 3: // Quarterly peak
-      // Higher in March, June, September, December
-      seasonalFactors[2] = 1.6;  // March
-      seasonalFactors[5] = 1.6;  // June
-      seasonalFactors[8] = 1.6;  // September
-      seasonalFactors[11] = 1.6; // December
-      break;
-      
-    case 4: // Biannual peak
-      // Higher in June and December
-      seasonalFactors[5] = 1.7;  // June
-      seasonalFactors[11] = 1.7; // December
-      break;
-      
-    case 5: // Steady increase
-      // Gradually increasing throughout the year
-      for (let i = 0; i < 12; i++) {
-        seasonalFactors[i] = 0.8 + (i * 0.04); // From 0.8 to 1.24
-      }
-      break;
-  }
-  
-  return seasonalFactors;
-}
-
-// Generate stock movements with seasonal patterns
+// Function to generate stock movements for items
 async function generateStockMovements(items: any[], userId: string) {
   console.log('Generating stock movements...');
   const startDate = CONFIG.START_DATE;
@@ -317,7 +265,7 @@ async function generateStockMovements(items: any[], userId: string) {
             quantity,
             reason: 'Regular consumption',
             reference: `REF-${faker.string.alphanumeric(8).toUpperCase()}`,
-            userId,
+            userId: userId,
             createdAt: movementDate,
           },
         });
@@ -339,7 +287,7 @@ async function generateStockMovements(items: any[], userId: string) {
             quantity: restockQuantity,
             reason: 'Restock',
             reference: `RESTOCK-${faker.string.alphanumeric(8).toUpperCase()}`,
-            userId,
+            userId: userId,
             createdAt: restockDate,
           },
         });
@@ -347,6 +295,62 @@ async function generateStockMovements(items: any[], userId: string) {
     }
   }
 }
+
+// Function to generate a seasonal pattern (monthly factors)
+function generateSeasonalPattern() {
+  // Different seasonal patterns:
+  // 1. Summer peak (higher in summer months)
+  // 2. Winter peak (higher in winter months)
+  // 3. Quarterly peak (higher at end of each quarter)
+  // 4. Biannual peak (higher twice a year)
+  // 5. Steady increase (gradually increasing throughout the year)
+  
+  const patternType = faker.number.int({ min: 1, max: 5 });
+  
+  // Create an array of 12 factors (one per month)
+  const seasonalFactors = new Array(12).fill(1.0); // Default is no seasonality
+  
+  switch (patternType) {
+    case 1: // Summer peak
+      // Higher in June, July, August
+      seasonalFactors[5] = 1.5; // June
+      seasonalFactors[6] = 1.8; // July
+      seasonalFactors[7] = 1.6; // August
+      break;
+      
+    case 2: // Winter peak
+      // Higher in November, December, January
+      seasonalFactors[10] = 1.5; // November
+      seasonalFactors[11] = 1.9; // December
+      seasonalFactors[0] = 1.4;  // January
+      break;
+      
+    case 3: // Quarterly peak
+      // Higher in March, June, September, December
+      seasonalFactors[2] = 1.6;  // March
+      seasonalFactors[5] = 1.6;  // June
+      seasonalFactors[8] = 1.6;  // September
+      seasonalFactors[11] = 1.6; // December
+      break;
+      
+    case 4: // Biannual peak
+      // Higher in June and December
+      seasonalFactors[5] = 1.7;  // June
+      seasonalFactors[11] = 1.7; // December
+      break;
+      
+    case 5: // Steady increase
+      // Gradually increasing throughout the year
+      for (let i = 0; i < 12; i++) {
+        seasonalFactors[i] = 0.8 + (i * 0.04); // From 0.8 to 1.24
+      }
+      break;
+  }
+  
+  return seasonalFactors;
+}
+
+// Removed duplicate code - the full implementation is at line 199
 
 // Generate initial forecasts based on historical data
 async function generateForecasts(items: any[]) {

@@ -1,0 +1,272 @@
+import { NextResponse } from 'next/server'
+import { db as prisma } from '@/lib/db'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+
+export async function GET() {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Get current date and calculate date ranges
+    const now = new Date()
+    const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0)
+    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1)
+
+    // Monthly spending (current month)
+    const currentMonthRequests = await prisma.request.findMany({
+      where: {
+        createdAt: {
+          gte: currentMonth,
+        },
+        status: 'APPROVED'
+      },
+      include: {
+        items: {
+          include: {
+            item: true
+          }
+        }
+      }
+    })
+
+    const currentMonthSpending = currentMonthRequests.reduce((total, request) => {
+      return total + request.items.reduce((itemTotal, requestItem) => {
+        return itemTotal + (requestItem.totalPrice || (requestItem.item.price * requestItem.quantity))
+      }, 0)
+    }, 0)
+
+    // Last month spending for comparison
+    const lastMonthRequests = await prisma.request.findMany({
+      where: {
+        createdAt: {
+          gte: lastMonth,
+          lt: currentMonth,
+        },
+        status: 'APPROVED'
+      },
+      include: {
+        items: {
+          include: {
+            item: true
+          }
+        }
+      }
+    })
+
+    const lastMonthSpending = lastMonthRequests.reduce((total, request) => {
+      return total + request.items.reduce((itemTotal, requestItem) => {
+        return itemTotal + (requestItem.totalPrice || (requestItem.item.price * requestItem.quantity))
+      }, 0)
+    }, 0)
+
+    // Requests processed this month
+    const requestsProcessed = await prisma.request.count({
+      where: {
+        createdAt: {
+          gte: currentMonth,
+        },
+        status: 'APPROVED'
+      }
+    })
+
+    // Last month requests for comparison
+    const lastMonthRequestsCount = await prisma.request.count({
+      where: {
+        createdAt: {
+          gte: lastMonth,
+          lt: currentMonth,
+        },
+        status: 'APPROVED'
+      }
+    })
+
+    // Items ordered this month
+    const itemsOrdered = currentMonthRequests.reduce((total, request) => {
+      return total + request.items.reduce((itemTotal, requestItem) => {
+        return itemTotal + requestItem.quantity
+      }, 0)
+    }, 0)
+
+    // Last month items for comparison
+    const lastMonthItems = lastMonthRequests.reduce((total, request) => {
+      return total + request.items.reduce((itemTotal, requestItem) => {
+        return itemTotal + requestItem.quantity
+      }, 0)
+    }, 0)
+
+    // Average order value
+    const avgOrderValue = requestsProcessed > 0 ? currentMonthSpending / requestsProcessed : 0
+    const lastMonthAvgOrderValue = lastMonthRequestsCount > 0 ? lastMonthSpending / lastMonthRequestsCount : 0
+
+    // Calculate percentage changes
+    const spendingChange = lastMonthSpending > 0 ? ((currentMonthSpending - lastMonthSpending) / lastMonthSpending) * 100 : 0
+    const requestsChange = lastMonthRequestsCount > 0 ? ((requestsProcessed - lastMonthRequestsCount) / lastMonthRequestsCount) * 100 : 0
+    const itemsChange = lastMonthItems > 0 ? ((itemsOrdered - lastMonthItems) / lastMonthItems) * 100 : 0
+    const avgOrderChange = lastMonthAvgOrderValue > 0 ? ((avgOrderValue - lastMonthAvgOrderValue) / lastMonthAvgOrderValue) * 100 : 0
+
+    // Spending by category
+    const categorySpending = await prisma.category.findMany({
+      include: {
+        items: {
+          include: {
+            requestItems: {
+              where: {
+                request: {
+                  createdAt: {
+                    gte: currentMonth,
+                  },
+                  status: 'APPROVED'
+                }
+              },
+              include: {
+                item: true
+              }
+            }
+          }
+        }
+      }
+    })
+
+    const categoryData = categorySpending.map(category => {
+      const amount = category.items.reduce((total, item) => {
+        return total + item.requestItems.reduce((itemTotal, requestItem) => {
+          return itemTotal + (requestItem.totalPrice || (item.price * requestItem.quantity))
+        }, 0)
+      }, 0)
+      return {
+        name: category.name,
+        amount: Math.round(amount)
+      }
+    }).filter(cat => cat.amount > 0)
+
+    const totalCategorySpending = categoryData.reduce((total, cat) => total + cat.amount, 0)
+    const topCategories = categoryData
+      .map(cat => ({
+        ...cat,
+        percentage: totalCategorySpending > 0 ? Math.round((cat.amount / totalCategorySpending) * 100) : 0
+      }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 5)
+
+    // Top suppliers
+    const supplierData = await prisma.supplier.findMany({
+      include: {
+        items: {
+          include: {
+            requestItems: {
+              where: {
+                request: {
+                  createdAt: {
+                    gte: currentMonth,
+                  },
+                  status: 'APPROVED'
+                }
+              },
+              include: {
+                item: true,
+                request: true
+              }
+            }
+          }
+        }
+      }
+    })
+
+    const topSuppliers = supplierData.map(supplier => {
+      const orders = new Set()
+      const amount = supplier.items.reduce((total, item) => {
+        return total + item.requestItems.reduce((itemTotal, requestItem) => {
+          orders.add(requestItem.request.id)
+          return itemTotal + (requestItem.totalPrice || (item.price * requestItem.quantity))
+        }, 0)
+      }, 0)
+      return {
+        name: supplier.name,
+        orders: orders.size,
+        amount: Math.round(amount)
+      }
+    })
+      .filter(supplier => supplier.amount > 0)
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 4)
+
+    // Monthly trend (last 12 months to show historical data)
+    const monthlyTrend = []
+    for (let i = 11; i >= 0; i--) {
+      const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0)
+      
+      const monthRequests = await prisma.request.findMany({
+        where: {
+          createdAt: {
+            gte: monthStart,
+            lte: monthEnd,
+          },
+          status: 'APPROVED'
+        },
+        include: {
+          items: {
+            include: {
+              item: true
+            }
+          }
+        }
+      })
+
+      const monthSpending = monthRequests.reduce((total, request) => {
+        return total + request.items.reduce((itemTotal, requestItem) => {
+          return itemTotal + (requestItem.totalPrice || (requestItem.item.price * requestItem.quantity))
+        }, 0)
+      }, 0)
+
+      monthlyTrend.push({
+        month: monthStart.toLocaleDateString('en-US', { month: 'short' }),
+        amount: Math.round(monthSpending)
+      })
+    }
+
+    return NextResponse.json({
+      reportCards: [
+        {
+          title: 'Monthly Spending',
+          value: `$${currentMonthSpending.toLocaleString()}`,
+          change: `${spendingChange >= 0 ? '+' : ''}${spendingChange.toFixed(1)}%`,
+          changeType: spendingChange >= 0 ? 'increase' : 'decrease',
+          description: 'Total spending this month',
+        },
+        {
+          title: 'Requests Processed',
+          value: requestsProcessed.toString(),
+          change: `${requestsChange >= 0 ? '+' : ''}${requestsChange.toFixed(1)}%`,
+          changeType: requestsChange >= 0 ? 'increase' : 'decrease',
+          description: 'Requests completed this month',
+        },
+        {
+          title: 'Items Ordered',
+          value: itemsOrdered.toLocaleString(),
+          change: `${itemsChange >= 0 ? '+' : ''}${itemsChange.toFixed(1)}%`,
+          changeType: itemsChange >= 0 ? 'increase' : 'decrease',
+          description: 'Total items ordered this month',
+        },
+        {
+          title: 'Average Order Value',
+          value: `$${avgOrderValue.toFixed(2)}`,
+          change: `${avgOrderChange >= 0 ? '+' : ''}${avgOrderChange.toFixed(1)}%`,
+          changeType: avgOrderChange >= 0 ? 'increase' : 'decrease',
+          description: 'Average value per order',
+        },
+      ],
+      topCategories,
+      topSuppliers,
+      monthlyTrend
+    })
+  } catch (error) {
+    console.error('Error fetching analytics:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}

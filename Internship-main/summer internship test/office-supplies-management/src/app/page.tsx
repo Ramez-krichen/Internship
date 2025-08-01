@@ -12,11 +12,12 @@ export default function Home() {
     if (status === 'loading') return // Still loading
 
     if (session) {
-      router.push('/dashboard')
+      // Use window.location.href to avoid RSC navigation issues
+      window.location.href = '/dashboard'
     } else {
-      router.push('/auth/signin')
+      window.location.href = '/auth/signin'
     }
-  }, [session, status, router])
+  }, [session, status])
 
   return (
     <div className="min-h-screen flex items-center justify-center">

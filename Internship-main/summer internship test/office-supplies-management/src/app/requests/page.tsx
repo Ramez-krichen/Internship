@@ -214,7 +214,11 @@ export default function RequestsPage() {
   const handleViewRequest = (request: Request) => {
     setViewingRequest(request)
     setIsReadOnly(true)
-    setIsNewRequestModalOpen(true)
+  }
+
+  const handleEditRequestClick = (request: Request) => {
+    setEditingRequest(request)
+    setIsReadOnly(false)
   }
   
   const handleDeleteRequest = async () => {
@@ -304,39 +308,39 @@ export default function RequestsPage() {
     <DashboardLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-4 sm:space-y-0">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Requests</h1>
             <p className="text-gray-600">Manage supply requests and approvals</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-2">
             <ExportButton 
               data={exportData}
               filename="requests"
               variant="default"
-
+              className="w-full sm:w-auto justify-center"
             >
               <Download className="h-4 w-4" />
-              Export
+              <span className="hidden sm:inline ml-2">Export</span>
             </ExportButton>
-          <button
-            onClick={() => setIsNewRequestModalOpen(true)}
-            className="bg-blue-600 text-white px-3 py-2 rounded-md hover:bg-blue-700 transition-colors flex items-center gap-2 w-fit"
-          >
-            <Plus className="h-4 w-4" />
-            New Request
-          </button>
+            <button
+              onClick={() => setIsNewRequestModalOpen(true)}
+              className="bg-blue-600 text-white px-3 py-2 rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 w-full sm:w-auto"
+            >
+              <Plus className="h-4 w-4" />
+              New Request
+            </button>
           </div>
         </div>
 
         {/* Search and Filters */}
         <div className="bg-white p-4 rounded-lg shadow space-y-4">
-          <div className="flex gap-4 items-center">
+          <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <input
                 type="text"
-                placeholder="Search requests by title, requester, or description..."
+                placeholder="Search requests..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-full focus:ring-indigo-500 focus:border-indigo-500"
@@ -344,21 +348,21 @@ export default function RequestsPage() {
             </div>
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+              className="flex items-center justify-center gap-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors whitespace-nowrap"
             >
               <Filter className="h-4 w-4" />
-              Filters
+              <span className="hidden sm:inline">Filters</span>
             </button>
           </div>
           
           {showFilters && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500"
                 >
                   <option value="ALL">All Status</option>
                   <option value="PENDING">Pending</option>
@@ -373,7 +377,7 @@ export default function RequestsPage() {
                 <select
                   value={priorityFilter}
                   onChange={(e) => setPriorityFilter(e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500"
                 >
                   <option value="ALL">All Priorities</option>
                   <option value="LOW">Low</option>
@@ -387,7 +391,7 @@ export default function RequestsPage() {
                 <select
                   value={departmentFilter}
                   onChange={(e) => setDepartmentFilter(e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500"
                 >
                   <option value="ALL">All Departments</option>
                   {departments.map(dept => (
@@ -409,14 +413,16 @@ export default function RequestsPage() {
           )}
         </div>
 
-        {/* Requests Table */}
+        {/* Requests Table/Cards */}
         <div className="bg-white shadow rounded-lg overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
+          <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
             <h3 className="text-lg font-medium text-gray-900">
               Requests ({filteredRequests.length})
             </h3>
           </div>
-          <div className="overflow-x-auto">
+          
+          {/* Desktop Table View */}
+          <div className="hidden lg:block overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -506,7 +512,7 @@ export default function RequestsPage() {
                         {(session?.user?.role === 'ADMIN' || 
                          (session?.user?.id === request.requesterId && request.status === 'PENDING')) && (
                           <button
-                            onClick={() => setEditingRequest(request)}
+                            onClick={() => handleEditRequestClick(request)}
                             className="text-indigo-600 hover:text-indigo-900"
                             title="Edit Request"
                           >
@@ -531,6 +537,97 @@ export default function RequestsPage() {
             </table>
           </div>
           
+          {/* Mobile Card View */}
+          <div className="lg:hidden">
+            {isLoading ? (
+              <div className="text-center py-8 text-gray-500">
+                Loading requests...
+              </div>
+            ) : filteredRequests.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                No requests found
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-200">
+                {filteredRequests.map((request) => (
+                  <div key={request.id} className="p-4 hover:bg-gray-50">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900 truncate">
+                          {request.title}
+                        </div>
+                        <div className="text-sm text-gray-500 mt-1">
+                          {request.description}
+                        </div>
+                        <div className="flex items-center mt-2 space-x-4">
+                          <div className="text-xs text-gray-500">
+                            <span className="font-medium">By:</span> {request.requester}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            <span className="font-medium">Dept:</span> {request.department}
+                          </div>
+                        </div>
+                        <div className="flex items-center mt-2 space-x-4">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusColors[request.status]}`}>
+                            {request.status.replace('_', ' ')}
+                          </span>
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${priorityColors[request.priority]}`}>
+                            {request.priority}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between mt-3">
+                          <div className="text-sm font-medium text-gray-900">
+                            ${request.totalAmount.toFixed(2)}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {request.createdAt}
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">
+                          {request.items.length} item{request.items.length !== 1 ? 's' : ''}
+                          {request.expectedDelivery && (
+                            <span className="ml-2">• Expected: {request.expectedDelivery}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="ml-4 flex-shrink-0">
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => handleViewRequest(request)}
+                            className="text-blue-600 hover:text-blue-900 p-1"
+                            title="View Request"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                          {(session?.user?.role === 'ADMIN' || 
+                           (session?.user?.id === request.requesterId && request.status === 'PENDING')) && (
+                            <button
+                              onClick={() => handleEditRequestClick(request)}
+                              className="text-indigo-600 hover:text-indigo-900 p-1"
+                              title="Edit Request"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </button>
+                          )}
+                          {(session?.user?.role === 'ADMIN' || 
+                           session?.user?.id === request.requesterId) && (
+                            <button
+                              onClick={() => setRequestToDelete(request)}
+                              className="text-red-600 hover:text-red-900 p-1"
+                              title="Delete Request"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          
           {filteredRequests.length === 0 && (
             <div className="text-center py-12">
               <FileText className="mx-auto h-12 w-12 text-gray-400" />
@@ -547,31 +644,42 @@ export default function RequestsPage() {
 
       {/* Add Request Modal */}
       <RequestModal
-        isOpen={isNewRequestModalOpen}
-        onClose={() => setIsNewRequestModalOpen(false)}
+        isOpen={isNewRequestModalOpen && !editingRequest && !viewingRequest}
+        onClose={() => {
+          setIsNewRequestModalOpen(false)
+          setIsReadOnly(false)
+        }}
         onSave={handleAddRequest}
         mode="add"
-        title="Create New Request"
+        readOnly={false}
       />
 
       {/* Edit Request Modal */}
       <RequestModal
         isOpen={!!editingRequest}
-        onClose={() => setEditingRequest(null)}
+        onClose={() => {
+          setEditingRequest(null)
+          setIsNewRequestModalOpen(false)
+          setIsReadOnly(false)
+        }}
         onSave={handleEditRequest}
+        request={editingRequest}
         mode="edit"
-        title="Edit Request"
-        initialData={editingRequest || undefined}
+        readOnly={false}
       />
 
       {/* View Request Modal */}
       <RequestModal
         isOpen={!!viewingRequest}
-        onClose={() => setViewingRequest(null)}
+        onClose={() => {
+          setViewingRequest(null)
+          setIsNewRequestModalOpen(false)
+          setIsReadOnly(false)
+        }}
+        onSave={() => {}}
+        request={viewingRequest}
         mode="view"
-        title="Request Details"
-        initialData={viewingRequest || undefined}
-        onStatusUpdate={handleUpdateStatus}
+        readOnly={true}
       />
 
       {/* Delete Confirmation Modal */}

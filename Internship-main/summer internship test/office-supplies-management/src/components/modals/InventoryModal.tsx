@@ -33,9 +33,10 @@ interface InventoryModalProps {
   item?: InventoryItem | null
   mode: 'add' | 'edit'
   suppliers?: Array<{ id: string; name: string }>
+  categories?: Array<{ id: string; name: string }>
 }
 
-export function InventoryModal({ isOpen, onClose, onSave, item, mode, suppliers = [] }: InventoryModalProps) {
+export function InventoryModal({ isOpen, onClose, onSave, item, mode, suppliers = [], categories = [] }: InventoryModalProps) {
   const [formData, setFormData] = useState({
     name: '',
     category: '',
@@ -198,14 +199,7 @@ export function InventoryModal({ isOpen, onClose, onSave, item, mode, suppliers 
 
   const categoryOptions = [
     { value: '', label: 'Select Category' },
-    { value: 'Office Supplies', label: 'Office Supplies' },
-    { value: 'Technology', label: 'Technology' },
-    { value: 'Furniture', label: 'Furniture' },
-    { value: 'Cleaning Supplies', label: 'Cleaning Supplies' },
-    { value: 'Stationery', label: 'Stationery' },
-    { value: 'Equipment', label: 'Equipment' },
-    { value: 'Maintenance', label: 'Maintenance' },
-    { value: 'Other', label: 'Other' }
+    ...categories.map(category => ({ value: category.name, label: category.name }))
   ]
 
   const unitOptions = [

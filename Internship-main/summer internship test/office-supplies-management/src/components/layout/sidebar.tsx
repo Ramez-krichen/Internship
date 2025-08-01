@@ -15,7 +15,9 @@ import {
   LogOut,
   Building2,
   Activity,
-  Zap
+  Zap,
+  Menu,
+  X
 } from 'lucide-react'
 
 const navigation = [
@@ -31,7 +33,14 @@ const navigation = [
   { name: 'Settings', href: '/settings', icon: Settings },
 ]
 
-export function Sidebar() {
+interface SidebarProps {
+  isCollapsed: boolean
+  setIsCollapsed: (collapsed: boolean) => void
+  isMobileOpen: boolean
+  setIsMobileOpen: (open: boolean) => void
+}
+
+export function Sidebar({ isCollapsed, setIsCollapsed, isMobileOpen, setIsMobileOpen }: SidebarProps) {
   const pathname = usePathname()
   const { data: session } = useSession()
 
@@ -40,56 +49,106 @@ export function Sidebar() {
   }
 
   return (
-    <div className="flex h-full w-64 flex-col bg-gray-900">
-      <div className="flex h-16 items-center justify-center bg-gray-800">
-        <h1 className="text-xl font-bold text-white">Office Supplies</h1>
-      </div>
+    <>
+      {/* Mobile overlay */}
+      {isMobileOpen && (
+        <div 
+          className="fixed inset-0 z-40 bg-black bg-opacity-50 lg:hidden"
+          onClick={() => setIsMobileOpen(false)}
+        />
+      )}
       
-      <nav className="flex-1 space-y-1 px-2 py-4">
-        {navigation.map((item) => {
-          // Skip items that require a specific role if user doesn't have it
-          if (item.requiredRole && session?.user?.role !== item.requiredRole) {
-            return null
-          }
+      {/* Sidebar */}
+      <div className={cn(
+        "fixed inset-y-0 left-0 z-50 flex flex-col bg-gray-900 transition-all duration-300 ease-in-out lg:static lg:z-auto",
+        // Mobile styles
+        isMobileOpen ? "w-64" : "-translate-x-full lg:translate-x-0",
+        // Desktop styles
+        isCollapsed ? "lg:w-16" : "lg:w-64"
+      )}>
+        <div className="flex h-16 items-center justify-between bg-gray-800 px-4">
+          {!isCollapsed && (
+            <h1 className="text-xl font-bold text-white truncate">Office Supplies</h1>
+          )}
           
-          const isActive = pathname === item.href
-          return (
-            <Link
-              key={item.name}
-              href={item.href}
-              className={cn(
-                'group flex items-center px-2 py-2 text-sm font-medium rounded-md',
-                isActive
-                  ? 'bg-gray-800 text-white'
-                  : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-              )}
-            >
-              <item.icon
-                className={cn(
-                  'mr-3 h-5 w-5',
-                  isActive ? 'text-white' : 'text-gray-400 group-hover:text-white'
-                )}
-              />
-              {item.name}
-            </Link>
-          )
-        })}
-      </nav>
-
-      <div className="border-t border-gray-700 p-4">
-        <div className="flex items-center">
-          <div className="flex-1">
-            <p className="text-sm font-medium text-white">{session?.user?.name}</p>
-            <p className="text-xs text-gray-400">{session?.user?.email}</p>
-          </div>
+          {/* Desktop collapse button */}
           <button
-            onClick={handleSignOut}
-            className="ml-3 flex h-8 w-8 items-center justify-center rounded-md text-gray-400 hover:bg-gray-700 hover:text-white"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="hidden lg:flex h-8 w-8 items-center justify-center rounded-md text-gray-400 hover:bg-gray-700 hover:text-white"
           >
-            <LogOut className="h-4 w-4" />
+            <Menu className="h-4 w-4" />
+          </button>
+          
+          {/* Mobile close button */}
+          <button
+            onClick={() => setIsMobileOpen(false)}
+            className="lg:hidden flex h-8 w-8 items-center justify-center rounded-md text-gray-400 hover:bg-gray-700 hover:text-white"
+          >
+            <X className="h-4 w-4" />
           </button>
         </div>
+      
+        <nav className="flex-1 space-y-1 px-2 py-4 overflow-y-auto">
+          {navigation.map((item) => {
+            // Skip items that require a specific role if user doesn't have it
+            if (item.requiredRole && session?.user?.role !== item.requiredRole) {
+              return null
+            }
+            
+            const isActive = pathname === item.href
+            return (
+              <Link
+                key={item.name}
+                href={item.href}
+                onClick={() => setIsMobileOpen(false)}
+                className={cn(
+                  'group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-200',
+                  isActive
+                    ? 'bg-gray-800 text-white'
+                    : 'text-gray-300 hover:bg-gray-700 hover:text-white',
+                  isCollapsed ? 'justify-center' : ''
+                )}
+                title={isCollapsed ? item.name : undefined}
+              >
+                <item.icon
+                  className={cn(
+                    'h-5 w-5 flex-shrink-0',
+                    isActive ? 'text-white' : 'text-gray-400 group-hover:text-white',
+                    isCollapsed ? '' : 'mr-3'
+                  )}
+                />
+                {!isCollapsed && (
+                  <span className="truncate">{item.name}</span>
+                )}
+              </Link>
+            )
+          })}
+        </nav>
+
+        <div className="border-t border-gray-700 p-4">
+          <div className={cn(
+            "flex items-center",
+            isCollapsed ? "justify-center" : ""
+          )}>
+            {!isCollapsed && (
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-white truncate">{session?.user?.name}</p>
+                <p className="text-xs text-gray-400 truncate">{session?.user?.email}</p>
+              </div>
+            )}
+            <button
+              onClick={handleSignOut}
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-md text-gray-400 hover:bg-gray-700 hover:text-white",
+                isCollapsed ? "" : "ml-3"
+              )}
+              title="Sign Out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   )
 }

@@ -58,10 +58,12 @@ export async function PUT(
       address,
       contactPerson
     } = body
+    
+    const supplierId = params.id
 
     // Check if supplier exists
     const existingSupplier = await prisma.supplier.findUnique({
-      where: { id: params.id }
+      where: { id: supplierId }
     })
 
     if (!existingSupplier) {
@@ -72,8 +74,8 @@ export async function PUT(
     if (name && name !== existingSupplier.name) {
       const duplicateSupplier = await prisma.supplier.findFirst({
         where: { 
-          name: { equals: name, mode: 'insensitive' },
-          id: { not: params.id }
+          name,
+          id: { not: supplierId }
         }
       })
 
@@ -85,29 +87,45 @@ export async function PUT(
       }
     }
 
-    const updatedSupplier = await prisma.supplier.update({
-      where: { id: params.id },
-      data: {
-        ...(name && { name }),
-        ...(email !== undefined && { email: email || null }),
-        ...(phone !== undefined && { phone: phone || null }),
-        ...(address !== undefined && { address: address || null }),
-        ...(contactPerson !== undefined && { contactPerson: contactPerson || null })
-      }
-    })
+    // Validate required fields
+    if (!name) {
+      return NextResponse.json(
+        { error: 'Supplier name is required' },
+        { status: 400 }
+      )
+    }
 
-    // Create audit log
-    await prisma.auditLog.create({
-      data: {
-        action: 'UPDATE',
-        entity: 'Supplier',
-        entityId: updatedSupplier.id,
-        performedBy: session.user.id,
-        details: `Updated supplier: ${updatedSupplier.name}`
-      }
-    })
+    try {
+      const updatedSupplier = await prisma.supplier.update({
+        where: { id: supplierId },
+        data: {
+          name,
+          email: email || null,
+          phone: phone || null,
+          address: address || null,
+          contactPerson: contactPerson || null
+        }
+      })
 
-    return NextResponse.json(updatedSupplier)
+      // Create audit log
+      await prisma.auditLog.create({
+        data: {
+          action: 'UPDATE',
+          entity: 'Supplier',
+          entityId: updatedSupplier.id,
+          performedBy: session.user.id,
+          details: `Updated supplier: ${updatedSupplier.name}`
+        }
+      })
+
+      return NextResponse.json(updatedSupplier)
+    } catch (updateError) {
+      console.error('Error in database update operation:', updateError)
+      return NextResponse.json(
+        { error: 'Database error while updating supplier' },
+        { status: 500 }
+      )
+    }
   } catch (error) {
     console.error('Error updating supplier:', error)
     return NextResponse.json(
@@ -127,10 +145,12 @@ export async function DELETE(
     if (!session || session.user.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    
+    const supplierId = params.id
 
     // Check if supplier exists
     const existingSupplier = await prisma.supplier.findUnique({
-      where: { id: params.id }
+      where: { id: supplierId }
     })
 
     if (!existingSupplier) {
@@ -139,8 +159,8 @@ export async function DELETE(
 
     // Check if supplier has items or purchase orders
     const [itemCount, orderCount] = await Promise.all([
-      prisma.item.count({ where: { supplierId: params.id } }),
-      prisma.purchaseOrder.count({ where: { supplierId: params.id } })
+      prisma.item.count({ where: { supplierId: supplierId } }),
+      prisma.purchaseOrder.count({ where: { supplierId: supplierId } })
     ])
 
     if (itemCount > 0 || orderCount > 0) {

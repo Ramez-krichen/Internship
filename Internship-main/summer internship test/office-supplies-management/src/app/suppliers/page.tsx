@@ -33,6 +33,7 @@ interface Supplier {
 
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [categories, setCategories] = useState<Array<{id: string, name: string}>>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
@@ -57,7 +58,31 @@ export default function SuppliersPage() {
         throw new Error('Failed to fetch suppliers')
       }
       const data = await response.json()
-      setSuppliers(data.suppliers || [])
+      
+      // Preserve categories from existing suppliers when refreshing
+      const newSuppliers = data.suppliers || []
+      if (suppliers.length > 0) {
+        // Create a map of existing suppliers with their categories
+        const existingSupplierMap = suppliers.reduce((map, supplier) => {
+          map[supplier.id] = supplier.categories || []
+          return map
+        }, {} as Record<string, string[]>)
+        
+        // Merge new suppliers with existing categories
+        const mergedSuppliers = newSuppliers.map(newSupplier => {
+          if (existingSupplierMap[newSupplier.id]) {
+            return {
+              ...newSupplier,
+              categories: existingSupplierMap[newSupplier.id]
+            }
+          }
+          return newSupplier
+        })
+        
+        setSuppliers(mergedSuppliers)
+      } else {
+        setSuppliers(newSuppliers)
+      }
     } catch (error) {
       console.error('Error fetching suppliers:', error)
       toast.error('Failed to load suppliers')
@@ -66,15 +91,32 @@ export default function SuppliersPage() {
     }
   }
 
+  // Fetch categories from API
+  const fetchCategories = async () => {
+    try {
+      const response = await fetch('/api/categories')
+      if (!response.ok) {
+        throw new Error('Failed to fetch categories')
+      }
+      const data = await response.json()
+      setCategories(data.categories || [])
+    } catch (error) {
+      console.error('Error fetching categories:', error)
+      toast.error('Failed to load categories')
+    }
+  }
+
   useEffect(() => {
     fetchSuppliers()
+    fetchCategories()
   }, [])
   
   // Get unique categories for filter
-  const categories = Array.from(new Set(suppliers.flatMap(supplier => supplier.categories || [])))
+  const supplierCategories = Array.from(new Set(suppliers.flatMap(supplier => supplier.categories || [])))
   
   const handleAddSupplier = async (supplierData: Partial<Supplier>) => {
     try {
+      // First create the supplier without categories
       const response = await fetch('/api/suppliers', {
         method: 'POST',
         headers: {
@@ -94,6 +136,22 @@ export default function SuppliersPage() {
         throw new Error(error.error || 'Failed to create supplier')
       }
 
+      // Get the created supplier data
+      const createdSupplier = await response.json()
+      
+      // Store the categories in local state for display purposes
+      if (supplierData.categories && supplierData.categories.length > 0) {
+        const updatedSuppliers = [...suppliers]
+        const index = updatedSuppliers.findIndex(s => s.id === createdSupplier.id)
+        if (index !== -1) {
+          updatedSuppliers[index] = {
+            ...updatedSuppliers[index],
+            categories: supplierData.categories
+          }
+          setSuppliers(updatedSuppliers)
+        }
+      }
+
       toast.success('Supplier added successfully')
       setIsAddModalOpen(false)
       fetchSuppliers() // Refresh the list
@@ -107,23 +165,48 @@ export default function SuppliersPage() {
     if (!editingSupplier) return
     
     try {
+      // Validate required fields before sending request
+      if (!supplierData.name) {
+        toast.error('Supplier name is required')
+        return
+      }
+      
+      // Create a copy of the data to send to the API
+      const apiData = {
+        name: supplierData.name,
+        email: supplierData.email || '',
+        phone: supplierData.phone || '',
+        address: supplierData.address || '',
+        contactPerson: supplierData.contactPerson || ''
+      }
+      
+      // Update the supplier without categories
       const response = await fetch(`/api/suppliers/${editingSupplier.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          name: supplierData.name,
-          email: supplierData.email,
-          phone: supplierData.phone,
-          address: supplierData.address,
-          contactPerson: supplierData.contactPerson
-        }),
+        body: JSON.stringify(apiData),
       })
 
+      const responseData = await response.json()
+      
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to update supplier')
+        throw new Error(responseData.error || 'Failed to update supplier')
+      }
+
+      // Update the supplier in local state including categories
+      const updatedSuppliers = [...suppliers]
+      const index = updatedSuppliers.findIndex(s => s.id === editingSupplier.id)
+      if (index !== -1) {
+        // Use the response data we already parsed
+        
+        // Preserve the categories from the form data since they're not stored in the database
+        updatedSuppliers[index] = {
+          ...responseData,
+          categories: supplierData.categories || updatedSuppliers[index].categories
+        }
+        setSuppliers(updatedSuppliers)
       }
 
       toast.success('Supplier updated successfully')
@@ -292,7 +375,7 @@ export default function SuppliersPage() {
                   className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
                 >
                   <option value="ALL">All Categories</option>
-                  {categories.map(category => (
+                  {supplierCategories.map(category => (
                     <option key={category} value={category}>{category}</option>
                   ))}
                 </select>
@@ -451,6 +534,7 @@ export default function SuppliersPage() {
         onSave={handleAddSupplier}
         mode="add"
         title="Add New Supplier"
+        categories={categories}
       />
 
       {/* Edit Supplier Modal */}
@@ -461,6 +545,7 @@ export default function SuppliersPage() {
         mode="edit"
         title="Edit Supplier"
         initialData={editingSupplier || undefined}
+        categories={categories}
       />
 
       {/* View Supplier Modal */}
@@ -470,6 +555,7 @@ export default function SuppliersPage() {
         mode="view"
         title="Supplier Details"
         initialData={viewingSupplier || undefined}
+        categories={categories}
       />
 
       {/* Delete Confirmation Modal */}
