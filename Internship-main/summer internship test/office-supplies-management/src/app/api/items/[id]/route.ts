@@ -6,7 +6,7 @@ import { authOptions } from '@/lib/auth'
 // GET /api/items/[id] - Get item by ID
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -14,8 +14,9 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const { id } = await params
     const item = await prisma.item.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         category: true,
         supplier: true
@@ -39,7 +40,7 @@ export async function GET(
 // PUT /api/items/[id] - Update item
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -65,9 +66,10 @@ export async function PUT(
       recyclable
     } = body
 
+    const { id } = await params
     // Check if item exists
     const existingItem = await prisma.item.findUnique({
-      where: { id: params.id }
+      where: { id }
     })
 
     if (!existingItem) {
@@ -89,7 +91,7 @@ export async function PUT(
     }
 
     const updatedItem = await prisma.item.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         ...(name && { name }),
         ...(description !== undefined && { description }),
@@ -136,7 +138,7 @@ export async function PUT(
 // DELETE /api/items/[id] - Delete item
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -144,9 +146,10 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const { id } = await params
     // Check if item exists
     const existingItem = await prisma.item.findUnique({
-      where: { id: params.id }
+      where: { id }
     })
 
     if (!existingItem) {
@@ -155,15 +158,15 @@ export async function DELETE(
 
     // Check if item is referenced in other tables
     const [requestItems, stockMovements, orderItems] = await Promise.all([
-      prisma.requestItem.count({ where: { itemId: params.id } }),
-      prisma.stockMovement.count({ where: { itemId: params.id } }),
-      prisma.orderItem.count({ where: { itemId: params.id } })
+      prisma.requestItem.count({ where: { itemId: id } }),
+      prisma.stockMovement.count({ where: { itemId: id } }),
+      prisma.orderItem.count({ where: { itemId: id } })
     ])
 
     if (requestItems > 0 || stockMovements > 0 || orderItems > 0) {
       // Instead of deleting, deactivate the item
       const deactivatedItem = await prisma.item.update({
-        where: { id: params.id },
+        where: { id },
         data: { isActive: false }
       })
 
@@ -186,7 +189,7 @@ export async function DELETE(
 
     // Safe to delete
     const deletedItem = await prisma.item.delete({
-      where: { id: params.id }
+      where: { id }
     })
 
     // Create audit log

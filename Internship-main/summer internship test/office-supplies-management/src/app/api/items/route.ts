@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '50')
+    const limit = parseInt(searchParams.get('limit') || '10000') // Increased default limit to show all items
     const category = searchParams.get('category')
     const status = searchParams.get('status')
     const search = searchParams.get('search')

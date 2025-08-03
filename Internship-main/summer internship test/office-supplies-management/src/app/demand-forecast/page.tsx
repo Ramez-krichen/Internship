@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { ChartBarIcon, PlusIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { toast } from 'react-hot-toast';
+import { Pagination } from '@/components/ui/pagination';
 
 interface DemandForecast {
   id: string;
@@ -50,7 +51,15 @@ export default function DemandForecastPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [periodTypeFilter, setPeriodTypeFilter] = useState('');
   const [itemFilter, setItemFilter] = useState('');
-  
+
+  // Pagination state
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 50,
+    total: 0,
+    pages: 0
+  });
+
   const [newForecast, setNewForecast] = useState({
     itemId: '',
     periodType: 'MONTHLY',
@@ -64,17 +73,22 @@ export default function DemandForecastPage() {
     fetchItems();
   }, [periodTypeFilter, itemFilter]);
 
-  const fetchForecasts = async () => {
+  const fetchForecasts = async (page = 1) => {
     try {
-      const params = new URLSearchParams();
+      setLoading(true);
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: pagination.limit.toString()
+      });
       if (periodTypeFilter) params.append('periodType', periodTypeFilter);
       if (itemFilter) params.append('itemId', itemFilter);
-      
+
       const response = await fetch(`/api/demand-forecast?${params}`);
       if (!response.ok) throw new Error('Failed to fetch forecasts');
-      
+
       const data = await response.json();
       setForecasts(data.forecasts);
+      setPagination(data.pagination);
     } catch (error) {
       console.error('Error fetching forecasts:', error);
       toast.error('Failed to fetch forecasts');
@@ -421,6 +435,16 @@ export default function DemandForecastPage() {
             </div>
           </div>
         )}
+
+        {/* Pagination */}
+        <Pagination
+          currentPage={pagination.page}
+          totalPages={pagination.pages}
+          totalItems={pagination.total}
+          itemsPerPage={pagination.limit}
+          onPageChange={fetchForecasts}
+          showInfo={true}
+        />
       </div>
 
       {/* Generate Forecast Modal */}

@@ -79,14 +79,20 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
         const response = await fetch('/api/items')
         if (response.ok) {
           const data = await response.json()
-          setAvailableItems(data.items)
+          setAvailableItems(data.items || [])
+        } else {
+          console.error('Failed to fetch items:', response.status, response.statusText)
+          toast.error('Failed to load available items')
         }
       } catch (error) {
         console.error('Error fetching items:', error)
+        toast.error('Unable to connect to server. Please check your connection.')
       }
     }
-    
-    fetchItems()
+
+    if (isOpen) {
+      fetchItems()
+    }
   }, [isOpen])
 
   useEffect(() => {
@@ -103,8 +109,8 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
           quantity: item.quantity,
           unitPrice: item.unitPrice || 0,
           totalPrice: item.totalPrice || 0,
-          itemId: item.itemId,
-          notes: item.notes || ''
+          itemId: item.itemId || item.id, // Handle both itemId and id fields
+          notes: item.notes || item.description || ''
         }))
       })
     } else {
@@ -147,13 +153,13 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
 
     // Validate items
     formData.items.forEach((item, index) => {
-      if (!item.itemId) {
+      if (!item.itemId || item.itemId.trim() === '') {
         newErrors[`item_${index}_itemId`] = 'Item selection is required'
       }
       if (!item.quantity || item.quantity <= 0) {
         newErrors[`item_${index}_quantity`] = 'Valid quantity is required'
       }
-      if (!item.unitPrice || item.unitPrice <= 0) {
+      if (item.unitPrice === undefined || item.unitPrice === null || item.unitPrice < 0) {
         newErrors[`item_${index}_unitPrice`] = 'Valid unit price is required'
       }
     })
@@ -164,8 +170,14 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (readOnly) return; // Prevent submission in read-only mode
+
+    // Check session
+    if (!session?.user?.id) {
+      toast.error('You must be logged in to perform this action')
+      return
+    }
 
     if (!validateForm()) {
       return
@@ -179,44 +191,79 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
         0
       )
 
+      // Ensure all items have valid itemId
+      const validatedItems = formData.items.map(item => {
+        if (!item.itemId || item.itemId.trim() === '') {
+          throw new Error(`Item "${item.name}" is missing a valid item ID`)
+        }
+        return {
+          itemId: item.itemId.trim(),
+          quantity: parseInt(item.quantity.toString()),
+          unitPrice: parseFloat(item.unitPrice.toString()),
+          totalPrice: parseInt(item.quantity.toString()) * parseFloat(item.unitPrice.toString()),
+          notes: item.notes || null
+        }
+      })
+
       const requestData = {
-        ...formData,
+        title: formData.title.trim(),
+        description: formData.description?.trim() || null,
+        department: formData.department.trim(),
+        priority: formData.priority,
         totalAmount,
-        items: formData.items.map(item => ({
-          ...item,
-          totalPrice: item.quantity * item.unitPrice
-        }))
+        items: validatedItems
       }
+
+      console.log('Submitting request data:', requestData) // Debug log
+      console.log('Session user:', session.user) // Debug log
 
       // If in edit mode, use the API directly
       if (mode === 'edit' && request?.id) {
+        console.log('Making PUT request to:', `/api/requests/${request.id}`)
+
         const response = await fetch(`/api/requests/${request.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(requestData),
+          credentials: 'include', // Ensure cookies are sent
         })
+
+        console.log('PUT response status:', response.status)
 
         if (!response.ok) {
           const errorData = await response.json()
-          throw new Error(errorData.error || 'Failed to update request')
+          console.error('Edit request error:', errorData) // Debug log
+          throw new Error(errorData.error || `Failed to update request (${response.status})`)
         }
+
+        const result = await response.json()
+        console.log('PUT response data:', result)
 
         toast.success('Request updated successfully')
       } else if (mode === 'add') {
+        console.log('Making POST request to: /api/requests')
+
         const response = await fetch('/api/requests', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(requestData),
+          credentials: 'include', // Ensure cookies are sent
         })
+
+        console.log('POST response status:', response.status)
 
         if (!response.ok) {
           const errorData = await response.json()
-          throw new Error(errorData.error || 'Failed to create request')
+          console.error('Create request error:', errorData) // Debug log
+          throw new Error(errorData.error || `Failed to create request (${response.status})`)
         }
+
+        const result = await response.json()
+        console.log('POST response data:', result)
 
         toast.success('Request created successfully')
       }
@@ -271,15 +318,21 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
           
           // Fetch item details including price from database
           fetch(`/api/items/${value}`)
-            .then(res => res.json())
+            .then(res => {
+              if (!res.ok) {
+                throw new Error(`Failed to fetch item details: ${res.status} ${res.statusText}`)
+              }
+              return res.json()
+            })
             .then(itemData => {
               setFormData(prevData => ({
                 ...prevData,
                 items: prevData.items.map((prevItem, prevIndex) => {
                   if (prevIndex === index) {
-                    const newItem = { 
-                      ...prevItem, 
-                      unitPrice: itemData.price || 0
+                    const newItem = {
+                      ...prevItem,
+                      unitPrice: itemData.price || itemData.unitPrice || 0,
+                      unit: itemData.unit || ''
                     }
                     newItem.totalPrice = newItem.quantity * newItem.unitPrice
                     return newItem
@@ -290,7 +343,7 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
             })
             .catch(error => {
               console.error('Error fetching item details:', error)
-              toast.error('Failed to load item price')
+              toast.error('Failed to load item price. Please enter manually.')
             })
         }
       }
@@ -342,18 +395,20 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={mode === 'add' ? 'New Supply Request' : 'Edit Request'}
+      title={mode === 'add' ? 'New Supply Request' : (readOnly ? 'View Request' : 'Edit Request')}
       size="xl"
     >
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="flex items-center gap-3 mb-6">
           {mode === 'add' ? (
             <Plus className="h-6 w-6 text-blue-600" />
+          ) : readOnly ? (
+            <Eye className="h-6 w-6 text-blue-600" />
           ) : (
             <Edit className="h-6 w-6 text-blue-600" />
           )}
           <h3 className="text-lg font-semibold text-gray-900">
-            {mode === 'add' ? 'Create New Supply Request' : 'Update Request Information'}
+            {mode === 'add' ? 'Create New Supply Request' : (readOnly ? 'View Request Details' : 'Update Request Information')}
           </h3>
         </div>
 
@@ -365,6 +420,7 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
               onChange={(e) => handleInputChange('title', e.target.value)}
               placeholder="Enter request title"
               error={!!errors.title}
+              readOnly={readOnly}
             />
           </FormField>
 
@@ -374,6 +430,7 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
               onChange={(e) => handleInputChange('department', e.target.value)}
               options={departmentOptions}
               error={!!errors.department}
+              disabled={readOnly}
             />
           </FormField>
 
@@ -384,6 +441,7 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
               onChange={(e) => handleInputChange('expectedDelivery', e.target.value)}
               min={new Date().toISOString().split('T')[0]}
               error={!!errors.expectedDelivery}
+              readOnly={readOnly}
             />
           </FormField>
 
@@ -392,6 +450,7 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
               value={formData.priority}
               onChange={(e) => handleInputChange('priority', e.target.value)}
               options={priorityOptions}
+              disabled={readOnly}
             />
           </FormField>
         </div>
@@ -400,14 +459,16 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h4 className="text-lg font-medium text-gray-900">Requested Items</h4>
-            <button
-              type="button"
-              onClick={addItem}
-              className="bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700 transition-colors flex items-center gap-2"
-            >
-              <Plus className="h-4 w-4" />
-              Add Item
-            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={addItem}
+                className="bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700 transition-colors flex items-center gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Add Item
+              </button>
+            )}
           </div>
 
           {errors.items && (
@@ -418,13 +479,15 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
             <div key={index} className="border border-gray-200 rounded-lg p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <h5 className="font-medium text-gray-900">Item {index + 1}</h5>
-                <button
-                  type="button"
-                  onClick={() => removeItem(index)}
-                  className="text-red-600 hover:text-red-800 transition-colors"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={() => removeItem(index)}
+                    className="text-red-600 hover:text-red-800 transition-colors"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -434,6 +497,7 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
                     onChange={(e) => updateItem(index, 'itemId', e.target.value)}
                     options={itemOptions}
                     error={!!errors[`item_${index}_itemId`]}
+                    disabled={readOnly}
                   />
                 </FormField>
 
@@ -445,6 +509,7 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
                     onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 0)}
                     placeholder="Qty"
                     error={!!errors[`item_${index}_quantity`]}
+                    readOnly={readOnly}
                   />
                 </FormField>
 
@@ -457,6 +522,7 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
                     onChange={(e) => updateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
                     placeholder="Unit Price"
                     error={!!errors[`item_${index}_unitPrice`]}
+                    readOnly={readOnly}
                   />
                 </FormField>
 
@@ -475,6 +541,7 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
                   value={item.notes || ''}
                   onChange={(e) => updateItem(index, 'notes', e.target.value)}
                   placeholder="Additional details about this item"
+                  readOnly={readOnly}
                 />
               </FormField>
             </div>
@@ -489,6 +556,7 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
               onChange={(e) => handleInputChange('description', e.target.value)}
               placeholder="Describe the purpose of this request"
               rows={3}
+              readOnly={readOnly}
             />
           </FormField>
 
@@ -498,17 +566,20 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
               onChange={(e) => handleInputChange('notes', e.target.value)}
               placeholder="Any additional information or special requirements"
               rows={2}
+              readOnly={readOnly}
             />
           </FormField>
         </div>
 
-        <FormActions
-          onCancel={onClose}
-          onSubmit={handleSubmit}
-          submitText={mode === 'add' ? 'Submit Request' : 'Update Request'}
-          isSubmitting={isSubmitting}
-          submitIcon={mode === 'add' ? <Plus className="h-4 w-4" /> : <Edit className="h-4 w-4" />}
-        />
+        {!readOnly && (
+          <FormActions
+            onCancel={onClose}
+            onSubmit={handleSubmit}
+            submitText={mode === 'add' ? 'Submit Request' : 'Update Request'}
+            isSubmitting={isSubmitting}
+            submitIcon={mode === 'add' ? <Plus className="h-4 w-4" /> : <Edit className="h-4 w-4" />}
+          />
+        )}
       </form>
     </Modal>
   )

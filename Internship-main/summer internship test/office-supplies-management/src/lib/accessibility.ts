@@ -104,6 +104,8 @@ export class FocusManager {
 // Screen reader utilities
 export class ScreenReaderUtils {
   static announceToScreenReader(message: string, priority: 'polite' | 'assertive' = 'polite'): void {
+    if (typeof document === 'undefined') return;
+    
     const announcement = document.createElement('div')
     announcement.setAttribute('aria-live', priority)
     announcement.setAttribute('aria-atomic', 'true')
@@ -118,7 +120,9 @@ export class ScreenReaderUtils {
     }, 1000)
   }
 
-  static createLiveRegion(id: string, priority: 'polite' | 'assertive' = 'polite'): HTMLElement {
+  static createLiveRegion(id: string, priority: 'polite' | 'assertive' = 'polite'): HTMLElement | null {
+    if (typeof document === 'undefined') return null;
+    
     let region = document.getElementById(id)
     
     if (!region) {
@@ -134,6 +138,8 @@ export class ScreenReaderUtils {
   }
 
   static updateLiveRegion(id: string, message: string): void {
+    if (typeof document === 'undefined') return;
+    
     const region = document.getElementById(id)
     if (region) {
       region.textContent = message
@@ -206,73 +212,65 @@ export class AccessibleFormUtils {
   }
 }
 
-// Keyboard navigation hooks and utilities
-export function useKeyboardNavigation(
+// Keyboard navigation utilities
+export interface KeyboardNavigationOptions {
+  onSelect?: (item: any, index: number) => void;
+  orientation?: 'horizontal' | 'vertical';
+}
+
+export function createKeyboardNavigationHandler(
   items: any[],
-  onSelect?: (item: any, index: number) => void,
-  orientation: 'horizontal' | 'vertical' = 'vertical'
+  options: KeyboardNavigationOptions = {}
 ) {
-  const handleKeyDown = (event: KeyboardEvent, currentIndex: number) => {
-    let newIndex = currentIndex
+  const { onSelect, orientation = 'vertical' } = options;
+  
+  return function handleKeyDown(event: KeyboardEvent, currentIndex: number): number {
+    let newIndex = currentIndex;
 
     switch (event.key) {
       case KeyboardKeys.ARROW_UP:
         if (orientation === 'vertical') {
-          event.preventDefault()
-          newIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1
+          event.preventDefault();
+          newIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
         }
-        break
+        break;
       case KeyboardKeys.ARROW_DOWN:
         if (orientation === 'vertical') {
-          event.preventDefault()
-          newIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0
+          event.preventDefault();
+          newIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
         }
-        break
+        break;
       case KeyboardKeys.ARROW_LEFT:
         if (orientation === 'horizontal') {
-          event.preventDefault()
-          newIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1
+          event.preventDefault();
+          newIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
         }
-        break
+        break;
       case KeyboardKeys.ARROW_RIGHT:
         if (orientation === 'horizontal') {
-          event.preventDefault()
-          newIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0
+          event.preventDefault();
+          newIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
         }
-        break
+        break;
       case KeyboardKeys.HOME:
-        event.preventDefault()
-        newIndex = 0
-        break
+        event.preventDefault();
+        newIndex = 0;
+        break;
       case KeyboardKeys.END:
-        event.preventDefault()
-        newIndex = items.length - 1
-        break
+        event.preventDefault();
+        newIndex = items.length - 1;
+        break;
       case KeyboardKeys.ENTER:
       case KeyboardKeys.SPACE:
         if (onSelect) {
-          event.preventDefault()
-          onSelect(items[currentIndex], currentIndex)
+          event.preventDefault();
+          onSelect(items[currentIndex], currentIndex);
         }
-        break
+        break;
     }
 
-    return newIndex
-  }
-
-  return { handleKeyDown }
-}
-
-// Skip link component for keyboard navigation
-export function SkipLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <a
-      href={href}
-      className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 bg-blue-600 text-white px-4 py-2 rounded-md z-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-    >
-      {children}
-    </a>
-  )
+    return newIndex;
+  };
 }
 
 // Accessible status indicators

@@ -2,7 +2,7 @@
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { useState, useEffect } from 'react'
-import { Plus, Search, AlertTriangle, Package, Edit, Trash2, Eye, Calendar, Filter, ShoppingCart } from 'lucide-react'
+import { Plus, Search, AlertTriangle, Package, Edit, Trash2, Eye, Calendar, Filter, ShoppingCart, CheckCircle } from 'lucide-react'
 import { InventoryModal, ViewInventoryModal } from '../../components/modals/InventoryModal'
 import { ConfirmModal } from '../../components/ui/modal'
 import { ConfirmationModal } from '../../components/ui/confirmation-modal'
@@ -60,7 +60,9 @@ export default function InventoryPage() {
   const [categories, setCategories] = useState<{id: string, name: string}[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  const categoryOptions = ['ALL', ...Array.from(new Set(items.map(item => item.category)))]
+  const categoryOptions = ['ALL', ...Array.from(new Set(items.map(item =>
+    typeof item.category === 'object' ? item.category?.name || 'Unknown' : item.category
+  )))]
   const statuses = ['ALL', 'in-stock', 'low-stock', 'out-of-stock', 'discontinued']
   const ecoOptions = ['ALL', 'eco-friendly', 'recyclable', 'non-eco']
 
@@ -70,7 +72,8 @@ export default function InventoryPage() {
                          item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          item.description.toLowerCase().includes(searchTerm.toLowerCase())
     
-    const matchesCategory = categoryFilter === 'ALL' || item.category === categoryFilter
+    const matchesCategory = categoryFilter === 'ALL' ||
+      (typeof item.category === 'object' ? item.category?.name === categoryFilter : item.category === categoryFilter)
     
     const matchesStock = stockFilter === 'ALL' || 
                         (stockFilter === 'LOW' && item.quantity <= item.minStock) ||
@@ -94,39 +97,85 @@ export default function InventoryPage() {
   const lowStockItems = items.filter(item => item.quantity <= item.minStock && item.isActive)
   const outOfStockItems = items.filter(item => item.quantity === 0 && item.isActive)
 
-  // Fetch data on component mount
+  // Function to auto-receive orders due today
+  const autoReceiveOrders = async () => {
+    try {
+      console.log('Checking for orders to auto-receive...')
+      const response = await fetch('/api/purchase-orders/auto-receive', {
+        method: 'POST',
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        if (result.processedOrders && result.processedOrders.length > 0) {
+          console.log(`Auto-received ${result.processedOrders.length} orders:`, result.processedOrders)
+          // Show a notification to the user
+          alert(`✅ Automatically received ${result.processedOrders.length} purchase order(s) that were due for delivery today. Inventory has been updated.`)
+        } else {
+          console.log('No orders were due for auto-receiving today')
+        }
+      } else {
+        console.error('Failed to auto-receive orders:', await response.text())
+      }
+    } catch (error) {
+      console.error('Error in auto-receive process:', error)
+    }
+  }
+
+  // Function to fetch all data
+  const fetchData = async () => {
+    try {
+      setIsLoading(true)
+
+      // First, auto-receive any orders due today
+      await autoReceiveOrders()
+
+      const [itemsResponse, suppliersResponse, categoriesResponse] = await Promise.all([
+        fetch('/api/items'),
+        fetch('/api/suppliers'),
+        fetch('/api/categories')
+      ])
+
+      if (itemsResponse.ok) {
+        const itemsData = await itemsResponse.json()
+        console.log('Fetched items data:', itemsData)
+
+        // The backend API already returns data in the correct format, so use it directly
+        setItems(itemsData.items || [])
+      }
+
+      if (suppliersResponse.ok) {
+        const suppliersData = await suppliersResponse.json()
+        setSuppliers(suppliersData.suppliers || [])
+      }
+
+      if (categoriesResponse.ok) {
+        const categoriesData = await categoriesResponse.json()
+        setCategories(categoriesData.categories || [])
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Fetch data on component mount and when page becomes visible
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setIsLoading(true)
-        const [itemsResponse, suppliersResponse, categoriesResponse] = await Promise.all([
-          fetch('/api/items'),
-          fetch('/api/suppliers'),
-          fetch('/api/categories')
-        ])
-        
-        if (itemsResponse.ok) {
-          const itemsData = await itemsResponse.json()
-          setItems(itemsData.items || [])
-        }
-        
-        if (suppliersResponse.ok) {
-          const suppliersData = await suppliersResponse.json()
-          setSuppliers(suppliersData.suppliers || [])
-        }
-        
-        if (categoriesResponse.ok) {
-          const categoriesData = await categoriesResponse.json()
-          setCategories(categoriesData.categories || [])
-        }
-      } catch (error) {
-        console.error('Error fetching data:', error)
-      } finally {
-        setIsLoading(false)
+    fetchData()
+
+    // Add event listener for when the page becomes visible (user switches tabs)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchData()
       }
     }
 
-    fetchData()
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [])
 
   // CRUD Operations
@@ -175,12 +224,14 @@ export default function InventoryPage() {
       })
       
       if (response.ok) {
-        const newItem = await response.json()
-        setItems(prev => [...prev, newItem])
+        alert('Item added successfully!')
         setIsAddModalOpen(false)
+        // Refresh the items list to get updated data
+        await fetchData()
       } else {
         const errorData = await response.json()
         console.error('Failed to add item:', errorData)
+        alert(`Failed to add item: ${errorData.error || 'Unknown error'}`)
       }
     } catch (error) {
       console.error('Error adding item:', error)
@@ -226,38 +277,10 @@ export default function InventoryPage() {
       })
       
       if (response.ok) {
-        const updatedItem = await response.json()
-        // Map backend response back to frontend format
-        const frontendItem = {
-          id: updatedItem.id,
-          name: updatedItem.name,
-          category: updatedItem.category?.name || itemData.category,
-          sku: updatedItem.reference,
-          description: updatedItem.description,
-          quantity: updatedItem.currentStock,
-          unit: updatedItem.unit,
-          minStock: updatedItem.minStock,
-          maxStock: updatedItem.maxStock || itemData.maxStock,
-          unitPrice: updatedItem.price,
-          supplier: updatedItem.supplier?.name || itemData.supplier,
-          location: itemData.location,
-          status: getStockStatus({
-            ...itemData,
-            quantity: updatedItem.currentStock,
-            isActive: updatedItem.isActive
-          }).status.toLowerCase().replace(' ', '-'),
-          lastUpdated: updatedItem.updatedAt,
-          expiryDate: itemData.expiryDate,
-          isActive: updatedItem.isActive,
-          isEcoFriendly: updatedItem.isEcoFriendly,
-          ecoRating: updatedItem.ecoRating,
-          carbonFootprint: updatedItem.carbonFootprint,
-          recyclable: updatedItem.recyclable
-        }
-        
-        setItems(prev => prev.map(item => item.id === editingItem.id ? frontendItem : item))
-        setEditingItem(null)
         alert('Item updated successfully!')
+        setEditingItem(null)
+        // Refresh the items list to get updated data
+        await fetchData()
       } else {
         const errorData = await response.json()
         console.error('Failed to update item:', errorData)
@@ -281,10 +304,13 @@ export default function InventoryPage() {
       })
       
       if (response.ok) {
-        setItems(prev => prev.filter(item => item.id !== deletingItem.id))
+        alert('Item deleted successfully!')
         setDeletingItem(null)
+        // Refresh the items list to get updated data
+        await fetchData()
       } else {
         console.error('Failed to delete item')
+        alert('Failed to delete item')
       }
     } catch (error) {
       console.error('Error deleting item:', error)
@@ -369,7 +395,7 @@ export default function InventoryPage() {
   const exportData = filteredItems.map(item => ({
     SKU: item.sku,
     Name: item.name,
-    Category: item.category,
+    Category: typeof item.category === 'object' ? item.category?.name || 'Unknown' : item.category,
     Description: item.description,
     'Current Stock': item.quantity,
     Unit: item.unit,
@@ -377,7 +403,7 @@ export default function InventoryPage() {
     'Max Stock': item.maxStock,
     'Unit Price': item.unitPrice || 0,
     'Total Value': ((item.quantity || 0) * (item.unitPrice || 0)).toFixed(2),
-    Supplier: item.supplier,
+    Supplier: typeof item.supplier === 'object' ? item.supplier?.name || 'Unknown' : item.supplier,
     Location: item.location,
     Status: item.status,
     'Last Updated': new Date(item.lastUpdated).toLocaleDateString(),
@@ -395,12 +421,30 @@ export default function InventoryPage() {
             <p className="text-gray-600">Manage your office supplies inventory</p>
           </div>
           <div className="flex items-center gap-3">
-            <ExportButton 
+            <button
+              onClick={fetchData}
+              className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 flex items-center gap-2 transition-colors"
+              disabled={isLoading}
+              title="Refresh inventory data"
+            >
+              <Package className="h-4 w-4" />
+              Refresh
+            </button>
+            <button
+              onClick={autoReceiveOrders}
+              className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center gap-2 transition-colors"
+              disabled={isLoading}
+              title="Process orders due for delivery today"
+            >
+              <CheckCircle className="h-4 w-4" />
+              Auto-Receive
+            </button>
+            <ExportButton
               data={exportData}
               filename="inventory-report"
               variant="primary"
             />
-            <button 
+            <button
               onClick={() => setIsAddModalOpen(true)}
               className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 transition-colors"
               disabled={isLoading}
@@ -607,7 +651,7 @@ export default function InventoryPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900">
-                        {item.category}
+                        {typeof item.category === 'object' ? item.category?.name || 'Unknown' : item.category}
                       </td>
                       <td className="px-6 py-4">
                         <div className="text-sm text-gray-900">
@@ -639,7 +683,7 @@ export default function InventoryPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900">
-                        {item.supplier}
+                        {typeof item.supplier === 'object' ? item.supplier?.name || 'Unknown' : item.supplier}
                       </td>
                       <td className="px-6 py-4 text-sm font-medium">
                         <div className="flex items-center space-x-2">

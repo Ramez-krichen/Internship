@@ -55,11 +55,41 @@ export async function GET(request: Request) {
       return sum + request.items.reduce((itemSum, requestItem) => itemSum + requestItem.quantity, 0)
     }, 0)
 
-    const periodTotalCost = approvedRequests.reduce((sum, request) => {
+    const periodRequestCost = approvedRequests.reduce((sum, request) => {
       return sum + request.items.reduce((itemSum, requestItem) => {
         return itemSum + (requestItem.totalPrice || (requestItem.quantity * requestItem.item.price))
       }, 0)
     }, 0)
+
+    // Get purchase orders from selected period
+    const purchaseOrders = await prisma.purchaseOrder.findMany({
+      where: {
+        createdAt: {
+          gte: periodStart
+        },
+        status: {
+          in: ['SENT', 'CONFIRMED', 'RECEIVED'] // Only count orders that represent actual spending
+        }
+      },
+      include: {
+        supplier: true,
+        items: {
+          include: {
+            item: {
+              include: {
+                category: true
+              }
+            }
+          }
+        }
+      }
+    })
+
+    const periodPOCost = purchaseOrders.reduce((sum, order) => {
+      return sum + order.totalAmount
+    }, 0)
+
+    const periodTotalCost = periodRequestCost + periodPOCost
 
     // Top departments by consumption with costs
     const departmentConsumption = approvedRequests.reduce((acc, request) => {
@@ -154,13 +184,31 @@ export async function GET(request: Request) {
     }, 0)
     
     const monthlyRequests = requests.filter(r => r.createdAt >= currentMonth)
-    const monthlySpend = monthlyRequests.reduce((sum, request) => {
+    const monthlyRequestSpend = monthlyRequests.reduce((sum, request) => {
       return sum + request.items.reduce((itemSum, requestItem) => {
         return itemSum + (requestItem.totalPrice || (requestItem.quantity * requestItem.item.price))
       }, 0)
     }, 0)
 
-    // Cost by category with item counts
+    // Get monthly purchase orders spending
+    const monthlyPurchaseOrders = await prisma.purchaseOrder.findMany({
+      where: {
+        createdAt: {
+          gte: currentMonth
+        },
+        status: {
+          in: ['SENT', 'CONFIRMED', 'RECEIVED']
+        }
+      }
+    })
+
+    const monthlyPOSpend = monthlyPurchaseOrders.reduce((sum, order) => {
+      return sum + order.totalAmount
+    }, 0)
+
+    const monthlySpend = monthlyRequestSpend + monthlyPOSpend
+
+    // Cost by category with item counts - Include both requests and purchase orders
     const categorySpend = requests.reduce((acc, request) => {
       request.items.forEach(requestItem => {
         const category = requestItem.item.category?.name || 'Uncategorized'
@@ -174,6 +222,20 @@ export async function GET(request: Request) {
       })
       return acc
     }, {} as Record<string, { cost: number; itemCount: number }>)
+
+    // Add purchase order items to category spending
+    purchaseOrders.forEach(order => {
+      order.items.forEach(orderItem => {
+        const category = orderItem.item.category?.name || 'Uncategorized'
+        const itemCost = orderItem.totalPrice
+
+        if (!categorySpend[category]) {
+          categorySpend[category] = { cost: 0, itemCount: 0 }
+        }
+        categorySpend[category].cost += itemCost
+        categorySpend[category].itemCount += 1
+      })
+    })
 
     const costByCategory = Object.entries(categorySpend)
       .map(([category, data]) => ({

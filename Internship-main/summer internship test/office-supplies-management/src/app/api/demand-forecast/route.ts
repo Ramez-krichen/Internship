@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '../auth/[...nextauth]/route';
+import { authOptions } from '@/lib/auth';
 
 const prisma = new PrismaClient();
 
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     const itemId = searchParams.get('itemId');
     const periodType = searchParams.get('periodType') || 'MONTHLY';
     const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const limit = parseInt(searchParams.get('limit') || '10000');
 
     const where: any = {};
     if (itemId) where.itemId = itemId;

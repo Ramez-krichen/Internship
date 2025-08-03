@@ -6,7 +6,7 @@ import { authOptions } from '@/lib/auth'
 // POST /api/purchase-orders/[id]/receive - Mark order as received
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -19,9 +19,12 @@ export async function POST(
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
     }
 
+    // Await params to fix Next.js 15 async params issue
+    const { id } = await params
+
     // Find the purchase order
     const order = await prisma.purchaseOrder.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         supplier: true,
         items: {
@@ -46,7 +49,7 @@ export async function POST(
 
     // Update order status to RECEIVED
     const updatedOrder = await prisma.purchaseOrder.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         status: 'RECEIVED',
         receivedDate: new Date(),
@@ -63,13 +66,35 @@ export async function POST(
     })
 
     // Update inventory quantities for received items
+    console.log('Updating inventory for received items...')
     for (const orderItem of updatedOrder.items) {
-      await prisma.item.update({
+      console.log(`Updating item ${orderItem.itemId}: adding ${orderItem.quantity} to current stock`)
+
+      const itemBefore = await prisma.item.findUnique({
+        where: { id: orderItem.itemId },
+        select: { currentStock: true, name: true }
+      })
+
+      const updatedItem = await prisma.item.update({
         where: { id: orderItem.itemId },
         data: {
           currentStock: {
             increment: orderItem.quantity
           }
+        }
+      })
+
+      console.log(`Item ${itemBefore?.name}: ${itemBefore?.currentStock} -> ${updatedItem.currentStock}`)
+
+      // Create stock movement record
+      await prisma.stockMovement.create({
+        data: {
+          itemId: orderItem.itemId,
+          type: 'INBOUND',
+          quantity: orderItem.quantity,
+          reason: 'Purchase Order Received',
+          reference: updatedOrder.orderNumber,
+          userId: session.user.id
         }
       })
     }
@@ -79,9 +104,9 @@ export async function POST(
       data: {
         action: 'RECEIVE_ORDER',
         entity: 'PURCHASE_ORDER',
-        entityId: params.id,
+        entityId: id,
         performedBy: session.user.id,
-        details: `Received purchase order: ${updatedOrder.orderNumber} from supplier: ${updatedOrder.supplier.name}`
+        details: `Received purchase order: ${updatedOrder.orderNumber} from supplier: ${updatedOrder.supplier.name} - Amount: $${updatedOrder.totalAmount.toFixed(2)} - Items received and added to inventory`
       }
     })
 
@@ -92,7 +117,7 @@ export async function POST(
       supplierId: updatedOrder.supplierId,
       supplier: updatedOrder.supplier.name,
       orderDate: updatedOrder.orderDate.toISOString().split('T')[0],
-      expectedDate: updatedOrder.expectedDelivery?.toISOString().split('T')[0] || null,
+      expectedDate: updatedOrder.expectedDate?.toISOString().split('T')[0] || null,
       receivedDate: updatedOrder.receivedDate?.toISOString().split('T')[0] || null,
       status: updatedOrder.status,
       totalAmount: updatedOrder.totalAmount,

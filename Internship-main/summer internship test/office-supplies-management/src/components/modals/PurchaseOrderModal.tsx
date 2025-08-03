@@ -323,8 +323,8 @@ export function PurchaseOrderModal({
                           error={!!errors[`item_${index}_itemId`]}
                         >
                           <option value="">Select item...</option>
-                          {filteredItems.map(availableItem => (
-                            <option key={availableItem.id} value={availableItem.id}>
+                          {filteredItems.map((availableItem, itemIndex) => (
+                            <option key={`item-${availableItem.id}-${itemIndex}`} value={availableItem.id}>
                               {availableItem.name} ({availableItem.sku}) - {availableItem.quantity} {availableItem.unit} available
                             </option>
                           ))}

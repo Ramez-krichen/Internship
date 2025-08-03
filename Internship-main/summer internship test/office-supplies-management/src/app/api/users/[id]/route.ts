@@ -13,7 +13,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 
     const body = await request.json()
     const { name, email, password, role, department, status } = body
-    const { id } = params
+    const { id } = await params
 
     const updateData: any = {
       name,
@@ -49,7 +49,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { id } = params
+    const { id } = await params
 
     const deletedUser = await prisma.user.delete({
       where: { id },

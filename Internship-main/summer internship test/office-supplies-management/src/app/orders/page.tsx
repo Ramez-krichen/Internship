@@ -82,28 +82,53 @@ export default function OrdersPage() {
   const [isReceiving, setIsReceiving] = useState(false)
   
   // Get unique values for filters
-  const suppliers = Array.from(new Set(orders.map(order => order.supplier)))
+  const suppliers = Array.from(new Set(orders.map(order => order.supplier).filter(Boolean)))
   const departments = Array.from(new Set(orders.map(order => order.department).filter(Boolean)))
+
+  // Function to fetch orders data
+  const fetchOrders = async () => {
+    try {
+      setIsLoading(true)
+      const response = await fetch('/api/purchase-orders')
+
+      if (response.ok) {
+        const ordersData = await response.json()
+        console.log('Fetched orders data:', ordersData)
+
+        // Transform the data to match the expected interface
+        const transformedOrders = (ordersData.orders || []).map((order: any) => ({
+          id: order.id,
+          orderNumber: order.orderNumber,
+          supplier: order.supplierName || order.supplier?.name || order.supplier || 'Unknown Supplier',
+          supplierId: order.supplierId,
+          status: order.status,
+          totalAmount: order.totalAmount,
+          orderDate: order.orderDate,
+          expectedDate: order.expectedDate,
+          receivedDate: order.receivedDate,
+          itemsCount: order.items?.length || 0,
+          items: order.items || [],
+          notes: order.notes,
+          priority: order.priority,
+          department: order.department,
+          requestedBy: order.requestedBy,
+          approvedBy: order.approvedBy,
+          createdAt: order.createdAt,
+          updatedAt: order.updatedAt
+        }))
+
+        setOrders(transformedOrders)
+      }
+    } catch (error) {
+      console.error('Error fetching orders:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   // Fetch data on component mount
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setIsLoading(true)
-        const response = await fetch('/api/purchase-orders')
-        
-        if (response.ok) {
-          const ordersData = await response.json()
-          setOrders(ordersData.orders || [])
-        }
-      } catch (error) {
-        console.error('Error fetching orders:', error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    fetchData()
+    fetchOrders()
   }, [])
   
   const handleAddOrder = async (orderData: Partial<Order>) => {
@@ -115,11 +140,11 @@ export default function OrdersPage() {
         },
         body: JSON.stringify(orderData),
       })
-      
+
       if (response.ok) {
-        const newOrder = await response.json()
-        setOrders(prev => [...prev, newOrder])
         alert('Order created successfully!')
+        // Refresh the orders list to get updated data
+        await fetchOrders()
       } else {
         const errorData = await response.json()
         alert(`Failed to create order: ${errorData.error || 'Unknown error'}`)
@@ -135,6 +160,8 @@ export default function OrdersPage() {
     if (!editingOrder) return
 
     try {
+      console.log('Sending order update data:', JSON.stringify(orderData, null, 2))
+
       const response = await fetch(`/api/purchase-orders/${editingOrder.id}`, {
         method: 'PUT',
         headers: {
@@ -142,13 +169,16 @@ export default function OrdersPage() {
         },
         body: JSON.stringify(orderData),
       })
-      
+
+      console.log('Update response status:', response.status)
+
       if (response.ok) {
-        const updatedOrder = await response.json()
-        setOrders(prev => prev.map(order => order.id === editingOrder.id ? updatedOrder : order))
         alert('Order updated successfully!')
+        // Refresh the orders list to get updated data
+        await fetchOrders()
       } else {
         const errorData = await response.json()
+        console.error('Update error response:', errorData)
         alert(`Failed to update order: ${errorData.error || 'Unknown error'}`)
       }
     } catch (error) {
@@ -168,11 +198,12 @@ export default function OrdersPage() {
       const response = await fetch(`/api/purchase-orders/${orderId}`, {
         method: 'DELETE',
       })
-      
+
       if (response.ok) {
-        setOrders(prev => prev.filter(order => order.id !== orderId))
         setOrderToDelete(null)
         alert('Order deleted successfully!')
+        // Refresh the orders list to get updated data
+        await fetchOrders()
       } else {
         const errorData = await response.json()
         alert(`Failed to delete order: ${errorData.error || 'Unknown error'}`)
@@ -193,12 +224,12 @@ export default function OrdersPage() {
       const response = await fetch(`/api/purchase-orders/${orderToSend.id}/send`, {
         method: 'POST',
       })
-      
+
       if (response.ok) {
-        const updatedOrder = await response.json()
-        setOrders(prev => prev.map(order => order.id === orderToSend.id ? updatedOrder : order))
         setOrderToSend(null)
         alert('Order sent successfully!')
+        // Refresh the orders list to get updated data
+        await fetchOrders()
       } else {
         const errorData = await response.json()
         alert(`Failed to send order: ${errorData.error || 'Unknown error'}`)
@@ -219,12 +250,12 @@ export default function OrdersPage() {
       const response = await fetch(`/api/purchase-orders/${orderToReceive.id}/receive`, {
         method: 'POST',
       })
-      
+
       if (response.ok) {
-        const updatedOrder = await response.json()
-        setOrders(prev => prev.map(order => order.id === orderToReceive.id ? updatedOrder : order))
         setOrderToReceive(null)
-        alert('Order received successfully!')
+        alert('Order received successfully! Inventory has been updated.')
+        // Refresh the orders list to get updated data
+        await fetchOrders()
       } else {
         const errorData = await response.json()
         alert(`Failed to receive order: ${errorData.error || 'Unknown error'}`)
@@ -361,8 +392,8 @@ export default function OrdersPage() {
                   className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
                 >
                   <option value="ALL">All Suppliers</option>
-                  {suppliers.map(supplier => (
-                    <option key={supplier} value={supplier}>{supplier}</option>
+                  {suppliers.map((supplier, index) => (
+                    <option key={`supplier-${supplier}-${index}`} value={supplier}>{supplier}</option>
                   ))}
                 </select>
               </div>
@@ -388,8 +419,8 @@ export default function OrdersPage() {
                   className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
                 >
                   <option value="ALL">All Departments</option>
-                  {departments.map(department => (
-                    <option key={department} value={department}>{department}</option>
+                  {departments.map((department, index) => (
+                    <option key={`department-${department}-${index}`} value={department}>{department}</option>
                   ))}
                 </select>
               </div>

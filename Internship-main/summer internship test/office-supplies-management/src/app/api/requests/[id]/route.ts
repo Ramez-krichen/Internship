@@ -5,7 +5,7 @@ import { db } from '@/lib/db'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -13,8 +13,9 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const { id } = await params
     const requestRecord = await db.request.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         requester: {
           select: {
@@ -102,15 +103,16 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
+
     if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Unauthorized - Please log in' }, { status: 401 })
     }
 
-    const requestId = params.id
+    const { id: requestId } = await params
     const body = await request.json()
     const {
       title,
@@ -181,6 +183,28 @@ export async function PUT(
 
     // Handle items update if provided
     if (items && items.length > 0) {
+      // Validate that all items have required fields
+      for (const item of items) {
+        if (!item.itemId) {
+          return NextResponse.json({ error: 'Item ID is required for all items' }, { status: 400 })
+        }
+        if (!item.quantity || item.quantity <= 0) {
+          return NextResponse.json({ error: 'Valid quantity is required for all items' }, { status: 400 })
+        }
+        if (!item.unitPrice || item.unitPrice < 0) {
+          return NextResponse.json({ error: 'Valid unit price is required for all items' }, { status: 400 })
+        }
+
+        // Check if item exists
+        const itemExists = await db.item.findUnique({
+          where: { id: item.itemId }
+        })
+
+        if (!itemExists) {
+          return NextResponse.json({ error: `Item with ID ${item.itemId} not found` }, { status: 400 })
+        }
+      }
+
       // Delete existing items
       await db.requestItem.deleteMany({
         where: { requestId }
@@ -196,7 +220,7 @@ export async function PUT(
               quantity: parseInt(item.quantity),
               unitPrice: parseFloat(item.unitPrice),
               totalPrice: parseFloat(item.quantity) * parseFloat(item.unitPrice),
-              notes: item.notes
+              notes: item.notes || null
             }
           })
         })
@@ -226,7 +250,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -234,7 +258,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const requestId = params.id
+    const { id: requestId } = await params
 
     // Check if request exists
     const existingRequest = await db.request.findUnique({

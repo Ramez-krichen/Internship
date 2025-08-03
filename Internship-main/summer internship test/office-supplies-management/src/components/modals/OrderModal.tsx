@@ -207,6 +207,13 @@ export const OrderModal: React.FC<OrderModalProps> = ({
       newErrors.items = 'At least one item is required'
     }
 
+    // Check for duplicate items
+    const itemIds = (formData.items || []).map(item => item.itemId).filter(id => id)
+    const duplicateItemIds = itemIds.filter((id, index) => itemIds.indexOf(id) !== index)
+    if (duplicateItemIds.length > 0) {
+      newErrors.items = 'Duplicate items are not allowed'
+    }
+
     formData.items?.forEach((item, index) => {
       if (!item.itemId) {
         newErrors[`item_${index}_itemId`] = 'Item is required'
@@ -416,8 +423,8 @@ export const OrderModal: React.FC<OrderModalProps> = ({
                           disabled={readOnly}
                         >
                           <option value="">Select item...</option>
-                          {filteredItems.map(availableItem => (
-                            <option key={availableItem.id} value={availableItem.id}>
+                          {filteredItems.map((availableItem, itemIndex) => (
+                            <option key={`item-${availableItem.id}-${itemIndex}`} value={availableItem.id}>
                               {availableItem.name}
                             </option>
                           ))}

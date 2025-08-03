@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { PlusIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { toast } from 'react-hot-toast';
+import { Pagination } from '@/components/ui/pagination';
 
 interface Return {
   id: string;
@@ -75,7 +76,15 @@ export default function ReturnsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [reasonFilter, setReasonFilter] = useState('');
-  
+
+  // Pagination state
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 50,
+    total: 0,
+    pages: 0
+  });
+
   const [newReturn, setNewReturn] = useState({
     itemId: '',
     quantity: '',
@@ -95,17 +104,22 @@ export default function ReturnsPage() {
     fetchItems();
   }, [statusFilter, reasonFilter]);
 
-  const fetchReturns = async () => {
+  const fetchReturns = async (page = 1) => {
     try {
-      const params = new URLSearchParams();
+      setLoading(true);
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: pagination.limit.toString()
+      });
       if (statusFilter) params.append('status', statusFilter);
       if (reasonFilter) params.append('reason', reasonFilter);
-      
+
       const response = await fetch(`/api/returns?${params}`);
       if (!response.ok) throw new Error('Failed to fetch returns');
-      
+
       const data = await response.json();
       setReturns(data.returns);
+      setPagination(data.pagination);
     } catch (error) {
       console.error('Error fetching returns:', error);
       toast.error('Failed to fetch returns');
@@ -347,6 +361,16 @@ export default function ReturnsPage() {
             <p className="text-gray-500">No returns found</p>
           </div>
         )}
+
+        {/* Pagination */}
+        <Pagination
+          currentPage={pagination.page}
+          totalPages={pagination.pages}
+          totalItems={pagination.total}
+          itemsPerPage={pagination.limit}
+          onPageChange={fetchReturns}
+          showInfo={true}
+        />
       </div>
 
       {/* Create Return Modal */}

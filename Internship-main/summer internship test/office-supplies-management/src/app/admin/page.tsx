@@ -112,7 +112,7 @@ export default function AdminUsersPage() {
   const filteredUsers = users.filter(user => {
     // Exclude admin users from the list
     if (user.role === 'ADMIN') return false
-    
+
     const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          user.department.toLowerCase().includes(searchTerm.toLowerCase())
@@ -120,6 +120,29 @@ export default function AdminUsersPage() {
     const matchesStatus = statusFilter === 'ALL' || user.status === statusFilter
     const matchesDepartment = departmentFilter === 'ALL' || user.department === departmentFilter
     return matchesSearch && matchesRole && matchesStatus && matchesDepartment
+  }).sort((a, b) => {
+    // Sort by role priority: MANAGER first, then EMPLOYEE (ADMIN already excluded)
+    // Within each role, active users appear before inactive users
+    const roleOrder = { 'MANAGER': 0, 'EMPLOYEE': 1 }
+    const aRoleOrder = roleOrder[a.role as keyof typeof roleOrder] ?? 2
+    const bRoleOrder = roleOrder[b.role as keyof typeof roleOrder] ?? 2
+
+    // First, sort by role
+    if (aRoleOrder !== bRoleOrder) {
+      return aRoleOrder - bRoleOrder
+    }
+
+    // If roles are the same, sort by status (ACTIVE first, then INACTIVE)
+    const statusOrder = { 'ACTIVE': 0, 'INACTIVE': 1 }
+    const aStatusOrder = statusOrder[a.status as keyof typeof statusOrder] ?? 2
+    const bStatusOrder = statusOrder[b.status as keyof typeof statusOrder] ?? 2
+
+    if (aStatusOrder !== bStatusOrder) {
+      return aStatusOrder - bStatusOrder
+    }
+
+    // If both role and status are the same, sort by name alphabetically
+    return a.name.localeCompare(b.name)
   })
   
   const exportData = filteredUsers.map(user => ({

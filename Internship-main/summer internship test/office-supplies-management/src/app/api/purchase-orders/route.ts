@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '50')
+    const limit = parseInt(searchParams.get('limit') || '10000') // Increased default limit to show all orders
     const status = searchParams.get('status')
     const supplierId = searchParams.get('supplierId')
     const search = searchParams.get('search')
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
       supplierId: order.supplierId,
       supplierName: order.supplier.name,
       orderDate: order.orderDate.toISOString().split('T')[0],
-      expectedDelivery: order.expectedDate?.toISOString().split('T')[0] || null,
+      expectedDate: order.expectedDate?.toISOString().split('T')[0] || null,
       status: order.status,
       totalAmount: order.totalAmount,
       notes: order.notes || '',
@@ -234,7 +234,7 @@ export async function POST(request: NextRequest) {
       supplierId: newOrder.supplierId,
       supplierName: newOrder.supplier.name,
       orderDate: newOrder.orderDate.toISOString().split('T')[0],
-      expectedDelivery: newOrder.expectedDate?.toISOString().split('T')[0] || null,
+      expectedDate: newOrder.expectedDate?.toISOString().split('T')[0] || null,
       status: newOrder.status,
       totalAmount: newOrder.totalAmount,
       notes: newOrder.notes || '',

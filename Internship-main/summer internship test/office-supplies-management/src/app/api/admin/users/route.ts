@@ -29,19 +29,41 @@ export async function GET() {
         lastSignIn: true,
         createdAt: true,
         updatedAt: true
-      },
-      orderBy: {
-        createdAt: 'desc'
       }
     })
-    
+
     // Transform the data to match the expected format
     const formattedUsers = users.map(user => ({
       ...user,
       status: user.role === 'ADMIN' ? 'Active' : 'Active' // You may want to add a status field to your User model
     }))
-    
-    return NextResponse.json(formattedUsers)
+
+    // Sort users by role priority: ADMIN first, then MANAGER, then EMPLOYEE
+    // Within each role, active users appear before inactive users
+    const sortedUsers = formattedUsers.sort((a, b) => {
+      const roleOrder = { 'ADMIN': 0, 'MANAGER': 1, 'EMPLOYEE': 2 }
+      const aRoleOrder = roleOrder[a.role as keyof typeof roleOrder] ?? 3
+      const bRoleOrder = roleOrder[b.role as keyof typeof roleOrder] ?? 3
+
+      // First, sort by role
+      if (aRoleOrder !== bRoleOrder) {
+        return aRoleOrder - bRoleOrder
+      }
+
+      // If roles are the same, sort by status (ACTIVE first, then INACTIVE)
+      const statusOrder = { 'ACTIVE': 0, 'INACTIVE': 1 }
+      const aStatusOrder = statusOrder[a.status as keyof typeof statusOrder] ?? 2
+      const bStatusOrder = statusOrder[b.status as keyof typeof statusOrder] ?? 2
+
+      if (aStatusOrder !== bStatusOrder) {
+        return aStatusOrder - bStatusOrder
+      }
+
+      // If both role and status are the same, sort by name alphabetically
+      return a.name.localeCompare(b.name)
+    })
+
+    return NextResponse.json(sortedUsers)
   } catch (error) {
     console.error('Error fetching users:', error)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })

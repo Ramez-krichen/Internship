@@ -6,7 +6,7 @@ import { authOptions } from '@/lib/auth'
 // POST /api/purchase-orders/[id]/send - Send order to supplier
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -19,9 +19,12 @@ export async function POST(
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
     }
 
+    // Await params to fix Next.js 15 async params issue
+    const { id } = await params
+
     // Find the purchase order
     const order = await prisma.purchaseOrder.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         supplier: true,
         items: {
@@ -46,7 +49,7 @@ export async function POST(
 
     // Update order status to SENT
     const updatedOrder = await prisma.purchaseOrder.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         status: 'SENT',
         updatedAt: new Date()
@@ -66,9 +69,9 @@ export async function POST(
       data: {
         action: 'SEND_ORDER',
         entity: 'PURCHASE_ORDER',
-        entityId: params.id,
+        entityId: id,
         performedBy: session.user.id,
-        details: `Sent purchase order: ${updatedOrder.orderNumber} to supplier: ${updatedOrder.supplier.name}`
+        details: `Sent purchase order: ${updatedOrder.orderNumber} to supplier: ${updatedOrder.supplier.name} - Amount: $${updatedOrder.totalAmount.toFixed(2)}`
       }
     })
 
@@ -79,7 +82,7 @@ export async function POST(
       supplierId: updatedOrder.supplierId,
       supplier: updatedOrder.supplier.name,
       orderDate: updatedOrder.orderDate.toISOString().split('T')[0],
-      expectedDate: updatedOrder.expectedDelivery?.toISOString().split('T')[0] || null,
+      expectedDate: updatedOrder.expectedDate?.toISOString().split('T')[0] || null,
       status: updatedOrder.status,
       totalAmount: updatedOrder.totalAmount,
       notes: updatedOrder.notes || '',

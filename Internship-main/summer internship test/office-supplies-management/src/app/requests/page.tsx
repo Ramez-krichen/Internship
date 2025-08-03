@@ -8,6 +8,7 @@ import { Modal, ConfirmModal } from '@/components/ui/modal'
 import { ConfirmationModal } from '@/components/ui/confirmation-modal'
 import { ExportButton } from '@/components/ui/export'
 import { DateRange } from '@/components/ui/form'
+import { Pagination } from '@/components/ui/pagination'
 import { useSession } from 'next-auth/react'
 import { toast } from 'react-hot-toast'
 
@@ -142,67 +143,92 @@ export default function RequestsPage() {
   // Modal states
   const [isNewRequestModalOpen, setIsNewRequestModalOpen] = useState(false)
   const [editingRequest, setEditingRequest] = useState<Request | null>(null)
-  const [viewingRequest, setViewingRequest] = useState<Request | null>(null)
+
   const [requestToDelete, setRequestToDelete] = useState<Request | null>(null)
   const [isReadOnly, setIsReadOnly] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  
+
+  // Pagination state
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 50,
+    total: 0,
+    pages: 0
+  })
+
   // Get unique departments for filter
   const departments = Array.from(new Set(requests.map(request => request.department)))
 
   // Fetch requests from API
-  useEffect(() => {
-    const fetchRequests = async () => {
-      setIsLoading(true)
-      try {
-        const response = await fetch('/api/requests')
-        if (response.ok) {
-          const data = await response.json()
-          setRequests(data.requests)
-        } else {
-          toast.error('Failed to fetch requests')
-        }
-      } catch (error) {
-        console.error('Error fetching requests:', error)
-        toast.error('An error occurred while fetching requests')
-      } finally {
-        setIsLoading(false)
+  const fetchRequests = async (page = 1) => {
+    setIsLoading(true)
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: pagination.limit.toString()
+      })
+
+      // Add filters to params
+      if (statusFilter !== 'ALL') params.append('status', statusFilter)
+      if (priorityFilter !== 'ALL') params.append('priority', priorityFilter)
+      if (departmentFilter !== 'ALL') params.append('department', departmentFilter)
+      if (dateRange.start) params.append('startDate', dateRange.start)
+      if (dateRange.end) params.append('endDate', dateRange.end)
+
+      const response = await fetch(`/api/requests?${params}`)
+      if (response.ok) {
+        const data = await response.json()
+        setRequests(data.requests)
+        setPagination(data.pagination)
+      } else {
+        toast.error('Failed to fetch requests')
       }
+    } catch (error) {
+      console.error('Error fetching requests:', error)
+      toast.error('An error occurred while fetching requests')
+    } finally {
+      setIsLoading(false)
     }
-    
+  }
+
+  useEffect(() => {
     fetchRequests()
-  }, []);
+  }, [statusFilter, priorityFilter, departmentFilter, dateRange]);
+
+  // Handle search with debouncing
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchTerm) {
+        // For now, we'll handle search client-side since the API doesn't support it yet
+        // In the future, you could add search to the API and call fetchRequests() here
+      }
+    }, 300)
+
+    return () => clearTimeout(timeoutId)
+  }, [searchTerm])
   
   const handleAddRequest = async (requestData: Partial<Request>) => {
     try {
       // The API call is now handled in the RequestModal component
       // This function is called after successful creation
-      const response = await fetch('/api/requests')
-      if (response.ok) {
-        const data = await response.json()
-        setRequests(data.requests)
-        toast.success('Request created successfully')
-      }
+      await fetchRequests(pagination.page)
+      toast.success('Request created successfully')
       setIsNewRequestModalOpen(false)
     } catch (error) {
       console.error('Error refreshing requests:', error)
       toast.error('Failed to refresh requests')
     }
   }
-  
+
   const handleEditRequest = async (requestData: Partial<Request>) => {
     if (!editingRequest) return
-    
+
     try {
       // The API call is now handled in the RequestModal component
       // This function is called after successful update
-      const response = await fetch('/api/requests')
-      if (response.ok) {
-        const data = await response.json()
-        setRequests(data.requests)
-        toast.success('Request updated successfully')
-      }
+      await fetchRequests(pagination.page)
+      toast.success('Request updated successfully')
       setEditingRequest(null)
       setIsNewRequestModalOpen(false)
     } catch (error) {
@@ -211,8 +237,10 @@ export default function RequestsPage() {
     }
   }
 
+
+
   const handleViewRequest = (request: Request) => {
-    setViewingRequest(request)
+    setEditingRequest(request)
     setIsReadOnly(true)
   }
 
@@ -238,12 +266,8 @@ export default function RequestsPage() {
       toast.success('Request deleted successfully')
       
       // Refresh the requests list
-      const updatedResponse = await fetch('/api/requests')
-      if (updatedResponse.ok) {
-        const data = await updatedResponse.json()
-        setRequests(data.requests)
-      }
-      
+      await fetchRequests(pagination.page)
+
       setRequestToDelete(null)
     } catch (error) {
       console.error('Error deleting request:', error)
@@ -252,41 +276,29 @@ export default function RequestsPage() {
       setIsDeleting(false)
     }
   }
-  
+
   const handleUpdateStatus = async (requestId: string, newStatus: Request['status'], reason?: string) => {
     try {
       // The API call is now handled in the ViewRequestModal component
       // This function is called after successful status update
-      const response = await fetch('/api/requests')
-      if (response.ok) {
-        const data = await response.json()
-        setRequests(data.requests)
-        toast.success(`Request status updated to ${newStatus.toLowerCase()}`)
-      }
-      setViewingRequest(null)
+      await fetchRequests(pagination.page)
+      toast.success(`Request status updated to ${newStatus.toLowerCase()}`)
+      setEditingRequest(null)
+      setIsReadOnly(false)
+
     } catch (error) {
       console.error('Error refreshing requests:', error)
       toast.error('Failed to update request status')
     }
   }
   
+  // Client-side search filtering (server-side filtering is handled in fetchRequests)
   const filteredRequests = requests.filter(request => {
+    if (!searchTerm) return true
     const matchesSearch = request.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          request.requester.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          request.description.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === 'ALL' || request.status === statusFilter
-    const matchesPriority = priorityFilter === 'ALL' || request.priority === priorityFilter
-    const matchesDepartment = departmentFilter === 'ALL' || request.department === departmentFilter
-    
-    let matchesDate = true
-    if (dateRange.start && dateRange.end) {
-      const requestDate = new Date(request.createdAt)
-      const startDate = new Date(dateRange.start)
-      const endDate = new Date(dateRange.end)
-      matchesDate = requestDate >= startDate && requestDate <= endDate
-    }
-    
-    return matchesSearch && matchesStatus && matchesPriority && matchesDepartment && matchesDate
+    return matchesSearch
   })
   
   const exportData = filteredRequests.map(request => ({
@@ -509,7 +521,7 @@ export default function RequestsPage() {
                         >
                           <Eye className="h-5 w-5" />
                         </button>
-                        {(session?.user?.role === 'ADMIN' || 
+                        {(session?.user?.role === 'ADMIN' ||
                          (session?.user?.id === request.requesterId && request.status === 'PENDING')) && (
                           <button
                             onClick={() => handleEditRequestClick(request)}
@@ -519,6 +531,7 @@ export default function RequestsPage() {
                             <Edit className="h-5 w-5" />
                           </button>
                         )}
+
                         {(session?.user?.role === 'ADMIN' || 
                          session?.user?.id === request.requesterId) && (
                           <button
@@ -599,7 +612,7 @@ export default function RequestsPage() {
                           >
                             <Eye className="h-4 w-4" />
                           </button>
-                          {(session?.user?.role === 'ADMIN' || 
+                          {(session?.user?.role === 'ADMIN' ||
                            (session?.user?.id === request.requesterId && request.status === 'PENDING')) && (
                             <button
                               onClick={() => handleEditRequestClick(request)}
@@ -609,6 +622,7 @@ export default function RequestsPage() {
                               <Edit className="h-4 w-4" />
                             </button>
                           )}
+
                           {(session?.user?.role === 'ADMIN' || 
                            session?.user?.id === request.requesterId) && (
                             <button
@@ -639,12 +653,22 @@ export default function RequestsPage() {
               </p>
             </div>
           )}
+
+          {/* Pagination */}
+          <Pagination
+            currentPage={pagination.page}
+            totalPages={pagination.pages}
+            totalItems={pagination.total}
+            itemsPerPage={pagination.limit}
+            onPageChange={fetchRequests}
+            showInfo={true}
+          />
         </div>
       </div>
 
       {/* Add Request Modal */}
       <RequestModal
-        isOpen={isNewRequestModalOpen && !editingRequest && !viewingRequest}
+        isOpen={isNewRequestModalOpen && !editingRequest}
         onClose={() => {
           setIsNewRequestModalOpen(false)
           setIsReadOnly(false)
@@ -664,23 +688,13 @@ export default function RequestsPage() {
         }}
         onSave={handleEditRequest}
         request={editingRequest}
-        mode="edit"
-        readOnly={false}
+        mode={isReadOnly ? "view" : "edit"}
+        readOnly={isReadOnly}
       />
 
-      {/* View Request Modal */}
-      <RequestModal
-        isOpen={!!viewingRequest}
-        onClose={() => {
-          setViewingRequest(null)
-          setIsNewRequestModalOpen(false)
-          setIsReadOnly(false)
-        }}
-        onSave={() => {}}
-        request={viewingRequest}
-        mode="view"
-        readOnly={true}
-      />
+
+
+
 
       {/* Delete Confirmation Modal */}
       <ConfirmationModal

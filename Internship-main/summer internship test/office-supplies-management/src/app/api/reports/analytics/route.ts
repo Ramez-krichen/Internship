@@ -17,7 +17,7 @@ export async function GET() {
     const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0)
     const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1)
 
-    // Monthly spending (current month)
+    // Monthly spending (current month) - Include both requests and purchase orders
     const currentMonthRequests = await prisma.request.findMany({
       where: {
         createdAt: {
@@ -34,13 +34,31 @@ export async function GET() {
       }
     })
 
-    const currentMonthSpending = currentMonthRequests.reduce((total, request) => {
+    const currentMonthRequestSpending = currentMonthRequests.reduce((total, request) => {
       return total + request.items.reduce((itemTotal, requestItem) => {
         return itemTotal + (requestItem.totalPrice || (requestItem.item.price * requestItem.quantity))
       }, 0)
     }, 0)
 
-    // Last month spending for comparison
+    // Get purchase orders spending for current month
+    const currentMonthPurchaseOrders = await prisma.purchaseOrder.findMany({
+      where: {
+        createdAt: {
+          gte: currentMonth,
+        },
+        status: {
+          in: ['SENT', 'CONFIRMED', 'RECEIVED'] // Only count orders that represent actual spending
+        }
+      }
+    })
+
+    const currentMonthPOSpending = currentMonthPurchaseOrders.reduce((total, order) => {
+      return total + order.totalAmount
+    }, 0)
+
+    const currentMonthSpending = currentMonthRequestSpending + currentMonthPOSpending
+
+    // Last month spending for comparison - Include both requests and purchase orders
     const lastMonthRequests = await prisma.request.findMany({
       where: {
         createdAt: {
@@ -58,11 +76,30 @@ export async function GET() {
       }
     })
 
-    const lastMonthSpending = lastMonthRequests.reduce((total, request) => {
+    const lastMonthRequestSpending = lastMonthRequests.reduce((total, request) => {
       return total + request.items.reduce((itemTotal, requestItem) => {
         return itemTotal + (requestItem.totalPrice || (requestItem.item.price * requestItem.quantity))
       }, 0)
     }, 0)
+
+    // Get purchase orders spending for last month
+    const lastMonthPurchaseOrders = await prisma.purchaseOrder.findMany({
+      where: {
+        createdAt: {
+          gte: lastMonth,
+          lt: currentMonth,
+        },
+        status: {
+          in: ['SENT', 'CONFIRMED', 'RECEIVED']
+        }
+      }
+    })
+
+    const lastMonthPOSpending = lastMonthPurchaseOrders.reduce((total, order) => {
+      return total + order.totalAmount
+    }, 0)
+
+    const lastMonthSpending = lastMonthRequestSpending + lastMonthPOSpending
 
     // Requests processed this month
     const requestsProcessed = await prisma.request.count({
@@ -195,12 +232,12 @@ export async function GET() {
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 4)
 
-    // Monthly trend (last 12 months to show historical data)
+    // Monthly trend (last 12 months to show historical data) - Include both requests and purchase orders
     const monthlyTrend = []
     for (let i = 11; i >= 0; i--) {
       const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1)
       const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0)
-      
+
       const monthRequests = await prisma.request.findMany({
         where: {
           createdAt: {
@@ -218,11 +255,30 @@ export async function GET() {
         }
       })
 
-      const monthSpending = monthRequests.reduce((total, request) => {
+      const monthRequestSpending = monthRequests.reduce((total, request) => {
         return total + request.items.reduce((itemTotal, requestItem) => {
           return itemTotal + (requestItem.totalPrice || (requestItem.item.price * requestItem.quantity))
         }, 0)
       }, 0)
+
+      // Get purchase orders for this month
+      const monthPurchaseOrders = await prisma.purchaseOrder.findMany({
+        where: {
+          createdAt: {
+            gte: monthStart,
+            lte: monthEnd,
+          },
+          status: {
+            in: ['SENT', 'CONFIRMED', 'RECEIVED']
+          }
+        }
+      })
+
+      const monthPOSpending = monthPurchaseOrders.reduce((total, order) => {
+        return total + order.totalAmount
+      }, 0)
+
+      const monthSpending = monthRequestSpending + monthPOSpending
 
       monthlyTrend.push({
         month: monthStart.toLocaleDateString('en-US', { month: 'short' }),

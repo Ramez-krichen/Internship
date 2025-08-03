@@ -119,7 +119,6 @@ export default function UsersPage() {
       const updatedUser = await response.json();
       setUsers(users.map(user => (user.id === editingUser.id ? updatedUser : user)));
       setEditingUser(null);
-      setIsAddModalOpen(false);
     } catch (error) {
       console.error('Error editing user:', error);
     }
@@ -127,8 +126,7 @@ export default function UsersPage() {
 
   const handleViewUser = (user: User) => {
     setViewingUser(user)
-    setIsReadOnly(true)
-    setIsAddModalOpen(true)
+    setIsViewModalOpen(true)
   }
   
   const handleDeactivateUser = async () => {
@@ -185,6 +183,29 @@ export default function UsersPage() {
     const matchesStatus = statusFilter === 'ALL' || user.status === statusFilter
     const matchesDepartment = departmentFilter === 'ALL' || user.department === departmentFilter
     return matchesSearch && matchesRole && matchesStatus && matchesDepartment
+  }).sort((a, b) => {
+    // Sort by role priority: ADMIN first, then MANAGER, then EMPLOYEE
+    // Within each role, active users appear before inactive users
+    const roleOrder = { 'ADMIN': 0, 'MANAGER': 1, 'EMPLOYEE': 2 }
+    const aRoleOrder = roleOrder[a.role as keyof typeof roleOrder] ?? 3
+    const bRoleOrder = roleOrder[b.role as keyof typeof roleOrder] ?? 3
+
+    // First, sort by role
+    if (aRoleOrder !== bRoleOrder) {
+      return aRoleOrder - bRoleOrder
+    }
+
+    // If roles are the same, sort by status (ACTIVE first, then INACTIVE)
+    const statusOrder = { 'ACTIVE': 0, 'INACTIVE': 1 }
+    const aStatusOrder = statusOrder[a.status as keyof typeof statusOrder] ?? 2
+    const bStatusOrder = statusOrder[b.status as keyof typeof statusOrder] ?? 2
+
+    if (aStatusOrder !== bStatusOrder) {
+      return aStatusOrder - bStatusOrder
+    }
+
+    // If both role and status are the same, sort by name alphabetically
+    return a.name.localeCompare(b.name)
   })
   
   const exportData = filteredUsers.map(user => ({
@@ -368,10 +389,7 @@ export default function UsersPage() {
                     <Eye className="h-5 w-5" />
                   </button>
                   <button
-                    onClick={() => {
-                      setEditingUser(user)
-                      setIsAddModalOpen(true)
-                    }}
+                    onClick={() => setEditingUser(user)}
                     className="text-blue-600 hover:text-blue-800"
                   >
                     <Edit className="h-5 w-5" />
@@ -424,42 +442,35 @@ export default function UsersPage() {
         isOpen={isAddModalOpen}
         onClose={() => {
           setIsAddModalOpen(false)
-          setEditingUser(null)
-          setViewingUser(null)
-          setIsReadOnly(false)
         }}
-        onSave={editingUser ? handleEditUser : handleAddUser}
-        user={editingUser || viewingUser}
-        mode={editingUser ? 'edit' : (viewingUser ? 'view' : 'add')}
-        readOnly={isReadOnly}
+        onSave={handleAddUser}
+        user={null}
+        mode="add"
+        readOnly={false}
       />
 
       {/* Edit User Modal */}
-      {editingUser && (
-        <UserModal
-          isOpen={!!editingUser}
-          onClose={() => setEditingUser(null)}
-          onSave={handleEditUser}
-          mode="edit"
-          title="Edit User"
-          initialData={editingUser}
-        />
-      )}
+      <UserModal
+        isOpen={!!editingUser}
+        onClose={() => setEditingUser(null)}
+        onSave={handleEditUser}
+        user={editingUser}
+        mode="edit"
+        readOnly={false}
+      />
 
       {/* View User Modal */}
-      {viewingUser && (
-        <UserModal
-          isOpen={isViewModalOpen}
-          onClose={() => {
-            setIsViewModalOpen(false)
-            setViewingUser(null)
-          }}
-          mode="view"
-          title="User Details"
-          initialData={viewingUser}
-          readOnly={true}
-        />
-      )}
+      <UserModal
+        isOpen={isViewModalOpen}
+        onClose={() => {
+          setIsViewModalOpen(false)
+          setViewingUser(null)
+        }}
+        onSave={() => {}} // No-op for view mode
+        user={viewingUser}
+        mode="view"
+        readOnly={true}
+      />
 
       {/* Delete Confirmation Modal */}
       <ConfirmationModal
