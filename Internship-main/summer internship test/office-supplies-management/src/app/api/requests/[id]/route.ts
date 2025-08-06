@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { checkAccess, createFeatureAccessCheck } from '@/lib/server-access-control'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const accessCheck = await checkAccess(createFeatureAccessCheck('REQUESTS', 'view')())
+    if (!accessCheck.hasAccess) {
+      return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status })
     }
+
+    const { user } = accessCheck
 
     const { id } = await params
     const requestRecord = await db.request.findUnique({
@@ -80,6 +81,7 @@ export async function GET(
       rejectedReason: latestApproval?.status === 'REJECTED' ? latestApproval.comments : undefined,
       items: requestRecord.items.map(item => ({
         id: item.id,
+        itemId: item.item.id, // Add the actual item ID for dropdown selection
         name: item.item.name,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
@@ -106,11 +108,12 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized - Please log in' }, { status: 401 })
+    const accessCheck = await checkAccess(createFeatureAccessCheck('REQUESTS', 'edit')())
+    if (!accessCheck.hasAccess) {
+      return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status })
     }
+
+    const { user, userRole } = accessCheck
 
     const { id: requestId } = await params
     const body = await request.json()
@@ -136,9 +139,9 @@ export async function PUT(
     // Check if user is authorized to update this request
     // Only the requester, managers, or admins can update
     if (
-      existingRequest.requesterId !== session.user.id &&
-      session.user.role !== 'ADMIN' &&
-      session.user.role !== 'MANAGER'
+      existingRequest.requesterId !== user.id &&
+      userRole !== 'ADMIN' &&
+      userRole !== 'MANAGER'
     ) {
       return NextResponse.json({ error: 'Not authorized to update this request' }, { status: 403 })
     }
@@ -162,7 +165,7 @@ export async function PUT(
     }
 
     // Only managers and admins can update status
-    if (status && (session.user.role === 'ADMIN' || session.user.role === 'MANAGER')) {
+    if (status && (userRole === 'ADMIN' || userRole === 'MANAGER')) {
       updateData.status = status
     }
 
@@ -233,7 +236,7 @@ export async function PUT(
         action: 'UPDATE',
         entity: 'Request',
         entityId: updatedRequest.id,
-        performedBy: session.user.id,
+        performedBy: user.id,
         details: `Updated request: ${updatedRequest.title}`
       }
     })
@@ -253,10 +256,12 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const accessCheck = await checkAccess(createFeatureAccessCheck('REQUESTS', 'delete')())
+    if (!accessCheck.hasAccess) {
+      return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status })
     }
+
+    const { user, userRole } = accessCheck
 
     const { id: requestId } = await params
 
@@ -272,9 +277,9 @@ export async function DELETE(
     // Check if user is authorized to delete this request
     // Only the requester, managers, or admins can delete
     if (
-      existingRequest.requesterId !== session.user.id &&
-      session.user.role !== 'ADMIN' &&
-      session.user.role !== 'MANAGER'
+      existingRequest.requesterId !== user.id &&
+      userRole !== 'ADMIN' &&
+      userRole !== 'MANAGER'
     ) {
       return NextResponse.json({ error: 'Not authorized to delete this request' }, { status: 403 })
     }
@@ -300,7 +305,7 @@ export async function DELETE(
         action: 'DELETE',
         entity: 'Request',
         entityId: requestId,
-        performedBy: session.user.id,
+        performedBy: user.id,
         details: `Deleted request: ${existingRequest.title}`
       }
     })

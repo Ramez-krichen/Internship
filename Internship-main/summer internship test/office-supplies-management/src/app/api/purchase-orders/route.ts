@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db as prisma } from '@/lib/db'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
+import { checkAccess, createFeatureAccessCheck } from '@/lib/server-access-control'
 
 // GET /api/purchase-orders - List all purchase orders
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const accessCheck = await checkAccess(createFeatureAccessCheck('PURCHASE_ORDERS', 'view')())
+    if (!accessCheck.hasAccess) {
+      return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status })
     }
 
     const { searchParams } = new URL(request.url)
@@ -131,11 +132,41 @@ export async function POST(request: NextRequest) {
     } = body
 
     // Validate required fields
-    if (!supplierId || !items || items.length === 0) {
+    if (!supplierId) {
       return NextResponse.json(
-        { error: 'Supplier and items are required' },
+        { error: 'Supplier is required' },
         { status: 400 }
       )
+    }
+
+    if (!items || items.length === 0) {
+      return NextResponse.json(
+        { error: 'At least one item is required' },
+        { status: 400 }
+      )
+    }
+
+    // Validate each item
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (!item.itemId) {
+        return NextResponse.json(
+          { error: `Item ${i + 1}: Item ID is required` },
+          { status: 400 }
+        )
+      }
+      if (!item.quantity || item.quantity <= 0) {
+        return NextResponse.json(
+          { error: `Item ${i + 1}: Quantity must be greater than 0` },
+          { status: 400 }
+        )
+      }
+      if (!item.unitPrice || item.unitPrice < 0) {
+        return NextResponse.json(
+          { error: `Item ${i + 1}: Unit price must be 0 or greater` },
+          { status: 400 }
+        )
+      }
     }
 
     // Validate supplier exists
@@ -255,8 +286,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(transformedOrder, { status: 201 })
   } catch (error) {
     console.error('Error creating purchase order:', error)
+
+    // Check for specific database constraint errors
+    if (error instanceof Error) {
+      if (error.message.includes('Unique constraint')) {
+        return NextResponse.json(
+          { error: 'Duplicate order number or constraint violation' },
+          { status: 400 }
+        )
+      }
+      if (error.message.includes('Foreign key constraint')) {
+        return NextResponse.json(
+          { error: 'Invalid supplier or item reference' },
+          { status: 400 }
+        )
+      }
+      if (error.message.includes('Invalid date')) {
+        return NextResponse.json(
+          { error: 'Invalid expected delivery date' },
+          { status: 400 }
+        )
+      }
+    }
+
     return NextResponse.json(
-      { error: 'Failed to create purchase order' },
+      { error: 'Failed to create purchase order. Please check your data and try again.' },
       { status: 500 }
     )
   }

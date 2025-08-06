@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Modal } from '../ui/modal'
 import { FormField, Input, Select, Textarea, FormActions } from '../ui/form'
-import { FileText, Plus, Edit, Eye, Trash2 } from 'lucide-react'
+import { FileText, Plus, Edit, Eye, Trash2, CheckCircle, XCircle } from 'lucide-react'
 import { useSession } from 'next-auth/react'
 import { toast } from 'react-hot-toast'
 
@@ -68,11 +68,18 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
       notes?: string
     }>
   })
+
+  // States for approve/reject functionality
+  const [rejectionReason, setRejectionReason] = useState('')
+  const [showRejectionInput, setShowRejectionInput] = useState(false)
+  const [isApproving, setIsApproving] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [availableItems, setAvailableItems] = useState<Array<{id: string, name: string, category: string}>>([]) 
+  const [availableItems, setAvailableItems] = useState<Array<{id: string, name: string, category: string}>>([])
+  const [availableDepartments, setAvailableDepartments] = useState<Array<{id: string, name: string, code: string}>>([])
+  const [loadingDepartments, setLoadingDepartments] = useState(false)
 
-  // Fetch available items for selection
+  // Fetch available items and departments for selection
   useEffect(() => {
     const fetchItems = async () => {
       try {
@@ -90,8 +97,26 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
       }
     }
 
+    const fetchDepartments = async () => {
+      try {
+        setLoadingDepartments(true)
+        const response = await fetch('/api/departments/overview')
+        if (response.ok) {
+          const data = await response.json()
+          setAvailableDepartments(data.departments || [])
+        } else {
+          console.error('Failed to fetch departments:', response.status, response.statusText)
+        }
+      } catch (error) {
+        console.error('Error fetching departments:', error)
+      } finally {
+        setLoadingDepartments(false)
+      }
+    }
+
     if (isOpen) {
       fetchItems()
+      fetchDepartments()
     }
   }, [isOpen])
 
@@ -278,6 +303,79 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
     }
   }
 
+  // Approve/Reject handlers for view mode
+  const handleApprove = async () => {
+    if (!request || isApproving) return
+
+    setIsApproving(true)
+    try {
+      const response = await fetch(`/api/requests/${request.id}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'APPROVED',
+          comments: 'Approved via request view modal'
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to approve request')
+      }
+
+      toast.success('Request approved successfully')
+      onSave(request) // Trigger refresh
+      onClose()
+    } catch (error) {
+      console.error('Error approving request:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to approve request')
+    } finally {
+      setIsApproving(false)
+    }
+  }
+
+  const handleReject = async () => {
+    if (!request) return
+
+    if (!showRejectionInput) {
+      setShowRejectionInput(true)
+      return
+    }
+
+    if (!rejectionReason.trim()) {
+      toast.error('Please provide a reason for rejection')
+      return
+    }
+
+    setIsApproving(true)
+    try {
+      const response = await fetch(`/api/requests/${request.id}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'REJECTED',
+          comments: rejectionReason.trim()
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to reject request')
+      }
+
+      toast.success('Request rejected successfully')
+      onSave(request) // Trigger refresh
+      onClose()
+    } catch (error) {
+      console.error('Error rejecting request:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to reject request')
+    } finally {
+      setIsApproving(false)
+      setShowRejectionInput(false)
+      setRejectionReason('')
+    }
+  }
+
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
     if (errors[field]) {
@@ -368,12 +466,10 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
 
   const departmentOptions = [
     { value: '', label: 'Select Department' },
-    { value: 'IT', label: 'Information Technology' },
-    { value: 'HR', label: 'Human Resources' },
-    { value: 'Finance', label: 'Finance' },
-    { value: 'Operations', label: 'Operations' },
-    { value: 'Marketing', label: 'Marketing' },
-    { value: 'Sales', label: 'Sales' }
+    ...availableDepartments.map(dept => ({
+      value: dept.name,
+      label: dept.name
+    }))
   ]
 
   const priorityOptions = [
@@ -581,6 +677,99 @@ export function RequestModal({ isOpen, onClose, onSave, request, mode, readOnly 
           />
         )}
       </form>
+
+      {/* Rejection reason input (shown when rejecting in view mode) */}
+      {readOnly && showRejectionInput && (
+        <div className="space-y-3 pt-4 border-t">
+          <label className="block text-sm font-medium text-gray-700">
+            Reason for rejection
+          </label>
+          <Textarea
+            value={rejectionReason}
+            onChange={(e) => setRejectionReason(e.target.value)}
+            placeholder="Please provide a reason for rejecting this request..."
+            rows={3}
+            disabled={isApproving}
+          />
+        </div>
+      )}
+
+      {/* Action buttons at the bottom for view mode */}
+      {readOnly && (
+        <div className="flex justify-between items-center pt-6 border-t">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 transition-colors"
+          >
+            Close
+          </button>
+
+          {request?.status === 'PENDING' && session?.user && (session.user.role === 'ADMIN' || session.user.role === 'MANAGER') && (
+            <div className="flex gap-3">
+              {showRejectionInput ? (
+                <>
+                  <button
+                    onClick={() => setShowRejectionInput(false)}
+                    disabled={isApproving}
+                    className="px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleReject}
+                    disabled={isApproving || !rejectionReason.trim()}
+                    className={`px-4 py-2 text-white rounded-md transition-colors flex items-center gap-2 ${
+                      isApproving || !rejectionReason.trim()
+                        ? 'bg-red-400 cursor-not-allowed'
+                        : 'bg-red-600 hover:bg-red-700'
+                    }`}
+                  >
+                    {isApproving ? (
+                      <>
+                        <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span>
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="h-4 w-4" />
+                        Confirm Rejection
+                      </>
+                    )}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={handleReject}
+                    disabled={isApproving}
+                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors flex items-center gap-2"
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Reject
+                  </button>
+                  <button
+                    onClick={handleApprove}
+                    disabled={isApproving}
+                    className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center gap-2"
+                  >
+                    {isApproving ? (
+                      <>
+                        <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span>
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="h-4 w-4" />
+                        Approve
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </Modal>
   )
 }
@@ -622,29 +811,52 @@ export function ViewRequestModal({ isOpen, onClose, request, onUpdateStatus }: V
   
   const handleApprove = async () => {
     if (!request) return
-    
+
     if (!session?.user) {
       toast.error('You must be logged in to approve requests')
       return
     }
-    
+
     if (session.user.role !== 'ADMIN' && session.user.role !== 'MANAGER') {
       toast.error('Only managers and administrators can approve requests')
       return
     }
-    
+
     if (request.status !== 'PENDING') {
       toast.error('Only pending requests can be approved')
       return
     }
-    
+
     setIsSubmitting(true)
     try {
+      // First check if we have a valid session
+      console.log('🔐 Checking session status...')
+      const sessionResponse = await fetch('/api/auth/session')
+      console.log(`📡 Session check status: ${sessionResponse.status}`)
+
+      if (!sessionResponse.ok) {
+        console.error('❌ No valid session found')
+        toast.error('Please log in again to continue')
+        window.location.href = '/auth/signin'
+        return
+      }
+
+      const sessionData = await sessionResponse.json()
+      console.log('✅ Session data:', sessionData)
+
+      if (!sessionData?.user) {
+        console.error('❌ No user in session')
+        toast.error('Please log in again to continue')
+        window.location.href = '/auth/signin'
+        return
+      }
+
       const response = await fetch(`/api/requests/${request.id}/approve`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'same-origin', // Ensure cookies are sent
         body: JSON.stringify({
           status: 'APPROVED'
         }),
@@ -652,6 +864,17 @@ export function ViewRequestModal({ isOpen, onClose, request, onUpdateStatus }: V
 
       if (!response.ok) {
         const errorData = await response.json()
+
+        // Handle specific error cases
+        if (response.status === 401) {
+          toast.error('Session expired. Please log in again.')
+          window.location.href = '/auth/signin'
+          return
+        } else if (response.status === 403) {
+          toast.error('You do not have permission to perform this action.')
+          return
+        }
+
         throw new Error(errorData.error || 'Failed to approve request')
       }
 
@@ -662,7 +885,11 @@ export function ViewRequestModal({ isOpen, onClose, request, onUpdateStatus }: V
       }
     } catch (error) {
       console.error('Error approving request:', error)
-      toast.error(error instanceof Error ? error.message : 'An error occurred while approving the request')
+      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+        toast.error('Network error. Please check your connection and try again.')
+      } else {
+        toast.error(error instanceof Error ? error.message : 'An error occurred while approving the request')
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -670,39 +897,62 @@ export function ViewRequestModal({ isOpen, onClose, request, onUpdateStatus }: V
   
   const handleReject = async () => {
     if (!request) return
-    
+
     if (!session?.user) {
       toast.error('You must be logged in to reject requests')
       return
     }
-    
+
     if (session.user.role !== 'ADMIN' && session.user.role !== 'MANAGER') {
       toast.error('Only managers and administrators can reject requests')
       return
     }
-    
+
     if (request.status !== 'PENDING') {
       toast.error('Only pending requests can be rejected')
       return
     }
-    
+
     if (!showRejectionInput) {
       setShowRejectionInput(true)
       return
     }
-    
+
     if (!rejectionReason.trim()) {
       toast.error('Please provide a reason for rejection')
       return
     }
-    
+
     setIsSubmitting(true)
     try {
+      // First check if we have a valid session
+      console.log('🔐 Checking session status...')
+      const sessionResponse = await fetch('/api/auth/session')
+      console.log(`📡 Session check status: ${sessionResponse.status}`)
+
+      if (!sessionResponse.ok) {
+        console.error('❌ No valid session found')
+        toast.error('Please log in again to continue')
+        window.location.href = '/auth/signin'
+        return
+      }
+
+      const sessionData = await sessionResponse.json()
+      console.log('✅ Session data:', sessionData)
+
+      if (!sessionData?.user) {
+        console.error('❌ No user in session')
+        toast.error('Please log in again to continue')
+        window.location.href = '/auth/signin'
+        return
+      }
+
       const response = await fetch(`/api/requests/${request.id}/approve`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'same-origin', // Ensure cookies are sent
         body: JSON.stringify({
           status: 'REJECTED',
           comments: rejectionReason
@@ -711,6 +961,17 @@ export function ViewRequestModal({ isOpen, onClose, request, onUpdateStatus }: V
 
       if (!response.ok) {
         const errorData = await response.json()
+
+        // Handle specific error cases
+        if (response.status === 401) {
+          toast.error('Session expired. Please log in again.')
+          window.location.href = '/auth/signin'
+          return
+        } else if (response.status === 403) {
+          toast.error('You do not have permission to perform this action.')
+          return
+        }
+
         throw new Error(errorData.error || 'Failed to reject request')
       }
 
@@ -722,7 +983,11 @@ export function ViewRequestModal({ isOpen, onClose, request, onUpdateStatus }: V
       }
     } catch (error) {
       console.error('Error rejecting request:', error)
-      toast.error(error instanceof Error ? error.message : 'An error occurred while rejecting the request')
+      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+        toast.error('Network error. Please check your connection and try again.')
+      } else {
+        toast.error(error instanceof Error ? error.message : 'An error occurred while rejecting the request')
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -788,67 +1053,9 @@ export function ViewRequestModal({ isOpen, onClose, request, onUpdateStatus }: V
                 <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(request.status)}`}>
                   {request.status}
                 </span>
-                {request.status === 'PENDING' && session?.user && (session.user.role === 'ADMIN' || session.user.role === 'MANAGER') && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleApprove}
-                      disabled={isSubmitting}
-                      className={`${isSubmitting ? 'bg-green-400' : 'bg-green-600'} text-white px-3 py-1 rounded text-sm hover:bg-green-700 transition-colors flex items-center gap-1`}
-                    >
-                      {isSubmitting && showRejectionInput === false ? (
-                        <>
-                          <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span>
-                          Processing...
-                        </>
-                      ) : 'Approve'}
-                    </button>
-                    <button
-                      onClick={handleReject}
-                      disabled={isSubmitting}
-                      className={`${isSubmitting && showRejectionInput ? 'bg-red-400' : 'bg-red-600'} text-white px-3 py-1 rounded text-sm hover:bg-red-700 transition-colors flex items-center gap-1`}
-                    >
-                      {isSubmitting && showRejectionInput ? (
-                        <>
-                          <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span>
-                          Processing...
-                        </>
-                      ) : 'Reject'}
-                    </button>
-                  </div>
-                )}
+
               </div>
-              
-              {showRejectionInput && (
-                <div className="space-y-2">
-                  <Textarea
-                    value={rejectionReason}
-                    onChange={(e) => setRejectionReason(e.target.value)}
-                    placeholder="Reason for rejection"
-                    rows={2}
-                    disabled={isSubmitting}
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleReject}
-                      disabled={isSubmitting}
-                      className={`${isSubmitting ? 'bg-red-400' : 'bg-red-600'} text-white px-3 py-1 rounded text-sm hover:bg-red-700 transition-colors flex items-center gap-1`}
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span>
-                          Processing...
-                        </>
-                      ) : 'Confirm Rejection'}
-                    </button>
-                    <button
-                      onClick={() => setShowRejectionInput(false)}
-                      disabled={isSubmitting}
-                      className="bg-gray-600 text-white px-3 py-1 rounded text-sm hover:bg-gray-700 transition-colors">
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
+
               
               {request.approvedBy && request.status === 'APPROVED' && (
                 <div className="text-sm text-gray-600">
@@ -925,13 +1132,95 @@ export function ViewRequestModal({ isOpen, onClose, request, onUpdateStatus }: V
           </div>
         </div>
 
-        <div className="flex justify-end pt-4">
+        {/* Rejection reason input (shown when rejecting) */}
+        {showRejectionInput && (
+          <div className="space-y-3 pt-4 border-t">
+            <label className="block text-sm font-medium text-gray-700">
+              Reason for rejection
+            </label>
+            <Textarea
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+              placeholder="Please provide a reason for rejecting this request..."
+              rows={3}
+              disabled={isSubmitting}
+            />
+          </div>
+        )}
+
+        {/* Action buttons at the bottom */}
+        <div className="flex justify-between items-center pt-6 border-t">
           <button
             onClick={onClose}
             className="px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 transition-colors"
           >
             Close
           </button>
+
+          {request.status === 'PENDING' && session?.user && (session.user.role === 'ADMIN' || session.user.role === 'MANAGER') && (
+            <div className="flex gap-3">
+              {showRejectionInput ? (
+                <>
+                  <button
+                    onClick={() => setShowRejectionInput(false)}
+                    disabled={isSubmitting}
+                    className="px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleReject}
+                    disabled={isSubmitting || !rejectionReason.trim()}
+                    className={`px-4 py-2 text-white rounded-md transition-colors flex items-center gap-2 ${
+                      isSubmitting || !rejectionReason.trim()
+                        ? 'bg-red-400 cursor-not-allowed'
+                        : 'bg-red-600 hover:bg-red-700'
+                    }`}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span>
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="h-4 w-4" />
+                        Confirm Rejection
+                      </>
+                    )}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={handleReject}
+                    disabled={isSubmitting}
+                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors flex items-center gap-2"
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Reject
+                  </button>
+                  <button
+                    onClick={handleApprove}
+                    disabled={isSubmitting}
+                    className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center gap-2"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span>
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="h-4 w-4" />
+                        Approve
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </Modal>

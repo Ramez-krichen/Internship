@@ -40,6 +40,8 @@ export function UserModal({ isOpen, onClose, onSave, user, mode, readOnly = fals
   const [isCheckingEmail, setIsCheckingEmail] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [password, setPassword] = useState('')
+  const [availableDepartments, setAvailableDepartments] = useState<Array<{id: string, name: string, code: string}>>([])
+  const [loadingDepartments, setLoadingDepartments] = useState(false)
 
   useEffect(() => {
     if (user && (mode === 'edit' || mode === 'view')) {
@@ -64,11 +66,35 @@ export function UserModal({ isOpen, onClose, onSave, user, mode, readOnly = fals
     setErrors({})
     if (user && user.role === 'ADMIN' && mode === 'view') {
       // In a real app, you'd fetch this securely
-      setPassword('fetched-password-for-admin-view'); 
+      setPassword('fetched-password-for-admin-view');
     } else {
       setPassword('');
     }
   }, [user, mode, isOpen])
+
+  // Fetch departments when modal opens
+  useEffect(() => {
+    const fetchDepartments = async () => {
+      try {
+        setLoadingDepartments(true)
+        const response = await fetch('/api/departments/overview')
+        if (response.ok) {
+          const data = await response.json()
+          setAvailableDepartments(data.departments || [])
+        } else {
+          console.error('Failed to fetch departments:', response.status, response.statusText)
+        }
+      } catch (error) {
+        console.error('Error fetching departments:', error)
+      } finally {
+        setLoadingDepartments(false)
+      }
+    }
+
+    if (isOpen) {
+      fetchDepartments()
+    }
+  }, [isOpen])
 
   const validateForm = async () => {
     const newErrors: Record<string, string> = {}
@@ -82,26 +108,34 @@ export function UserModal({ isOpen, onClose, onSave, user, mode, readOnly = fals
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = 'Please enter a valid email address'
     } else {
-      // Check email uniqueness only if it's a new user or email has changed
-      if (mode === 'add' || (mode === 'edit' && user && formData.email !== user.email)) {
-        setIsCheckingEmail(true)
-        try {
-          const response = await fetch(`/api/admin/users/check-email?email=${encodeURIComponent(formData.email)}`)
-          const data = await response.json()
-          
-          if (!response.ok && data.error === 'Email already in use') {
-            newErrors.email = 'This email is already in use'
+      // Prevent changing main admin email
+      if (mode === 'edit' && user && user.email === 'admin@example.com' && formData.email !== 'admin@example.com') {
+        newErrors.email = 'Cannot change email of the main admin account'
+      } else {
+        // Check email uniqueness only if it's a new user or email has changed
+        if (mode === 'add' || (mode === 'edit' && user && formData.email !== user.email)) {
+          setIsCheckingEmail(true)
+          try {
+            const response = await fetch(`/api/admin/users/check-email?email=${encodeURIComponent(formData.email)}`)
+            const data = await response.json()
+
+            if (!response.ok && data.error === 'Email already in use') {
+              newErrors.email = 'This email is already in use'
+            }
+          } catch (error) {
+            console.error('Error checking email uniqueness:', error)
+          } finally {
+            setIsCheckingEmail(false)
           }
-        } catch (error) {
-          console.error('Error checking email uniqueness:', error)
-        } finally {
-          setIsCheckingEmail(false)
         }
       }
     }
 
     if (!formData.role.trim()) {
       newErrors.role = 'Role is required'
+    } else if (mode === 'edit' && user && user.email === 'admin@example.com' && formData.role !== 'ADMIN') {
+      // Prevent changing main admin's role
+      newErrors.role = 'Cannot change role of the main admin account'
     } else if (formData.role === 'ADMIN') {
       // Check if trying to create an admin user
       if (mode === 'add' || (mode === 'edit' && user && user.role !== 'ADMIN')) {
@@ -109,7 +143,7 @@ export function UserModal({ isOpen, onClose, onSave, user, mode, readOnly = fals
         try {
           const response = await fetch('/api/admin/users/check-admin-limit')
           const data = await response.json()
-          
+
           if (!response.ok && data.error === 'Admin limit reached') {
             newErrors.role = 'Only one admin account is allowed. Please choose another role.'
           }
@@ -179,12 +213,10 @@ export function UserModal({ isOpen, onClose, onSave, user, mode, readOnly = fals
 
   const departmentOptions = [
     { value: '', label: 'Select Department' },
-    { value: 'IT', label: 'Information Technology' },
-    { value: 'HR', label: 'Human Resources' },
-    { value: 'Finance', label: 'Finance' },
-    { value: 'Operations', label: 'Operations' },
-    { value: 'Marketing', label: 'Marketing' },
-    { value: 'Sales', label: 'Sales' }
+    ...availableDepartments.map(dept => ({
+      value: dept.name,
+      label: `${dept.name} (${dept.code})`
+    }))
   ]
 
   const statusOptions = [

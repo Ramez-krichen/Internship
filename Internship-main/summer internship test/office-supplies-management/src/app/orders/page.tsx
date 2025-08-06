@@ -2,6 +2,8 @@
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { useEffect, useState } from 'react'
+import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import { Plus, Search, Filter, ShoppingCart, Calendar, DollarSign, Truck, Edit, Trash2, Eye, Download, Send, CheckCircle } from 'lucide-react'
 import { OrderModal } from '@/components/modals/OrderModal'
 import { Modal, ConfirmModal } from '@/components/ui/modal'
@@ -59,8 +61,11 @@ const priorityColors = {
 }
 
 export default function OrdersPage() {
-    const [orders, setOrders] = useState<Order[]>([])
+  const { data: session, status } = useSession()
+  const router = useRouter()
+  const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [hasAccess, setHasAccess] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [supplierFilter, setSupplierFilter] = useState('ALL')
@@ -126,10 +131,50 @@ export default function OrdersPage() {
     }
   }
 
-  // Fetch data on component mount
+  // Check access and fetch data on component mount
   useEffect(() => {
-    fetchOrders()
-  }, [])
+    if (status === 'loading') return
+
+    if (!session) {
+      router.push('/auth/signin')
+      return
+    }
+
+    // Check if user has access to purchase orders
+    const checkAccess = async () => {
+      try {
+        // For admins, always allow access
+        if (session.user.role === 'ADMIN') {
+          setHasAccess(true)
+          fetchOrders()
+          return
+        }
+
+        // For managers, check if they have explicit permission
+        if (session.user.role === 'MANAGER') {
+          const response = await fetch(`/api/admin/users/${session.user.id}/permissions`)
+          if (response.ok) {
+            const data = await response.json()
+            const hasPermission = data.user.permissions.includes('purchase_orders')
+            setHasAccess(hasPermission)
+            if (hasPermission) {
+              fetchOrders()
+            }
+          } else {
+            setHasAccess(false)
+          }
+        } else {
+          // Employees don't have access
+          setHasAccess(false)
+        }
+      } catch (error) {
+        console.error('Error checking access:', error)
+        setHasAccess(false)
+      }
+    }
+
+    checkAccess()
+  }, [session, status, router])
   
   const handleAddOrder = async (orderData: Partial<Order>) => {
     try {
@@ -314,6 +359,37 @@ export default function OrdersPage() {
       case 'CANCELLED': return <Calendar className="h-4 w-4" />
       default: return <ShoppingCart className="h-4 w-4" />
     }
+  }
+
+  // Show loading state
+  if (status === 'loading') {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
+  // Show access denied for users without permission
+  if (!hasAccess) {
+    return (
+      <DashboardLayout>
+        <div className="text-center py-12">
+          <ShoppingCart className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Access Restricted</h3>
+          <p className="text-gray-600 mb-4">
+            You don't have permission to access purchase orders.
+          </p>
+          {session?.user?.role === 'MANAGER' && (
+            <p className="text-sm text-gray-500">
+              Contact your administrator to request purchase order access.
+            </p>
+          )}
+        </div>
+      </DashboardLayout>
+    )
   }
 
   return (

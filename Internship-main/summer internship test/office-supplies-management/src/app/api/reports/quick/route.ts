@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server'
 import { db as prisma } from '@/lib/db'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth'
+import { checkAccess, createFeatureAccessCheck } from '@/lib/server-access-control'
 
 export async function GET(request: Request) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const accessCheck = await checkAccess(createFeatureAccessCheck('QUICK_REPORTS', 'view')())
+    if (!accessCheck.hasAccess) {
+      return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status })
     }
+
+    const { user, userRole, userDepartment, requiresDepartmentFiltering } = accessCheck
 
     // Get period from query parameters
     const { searchParams } = new URL(request.url)
@@ -30,7 +31,16 @@ export async function GET(request: Request) {
         status: 'APPROVED',
         createdAt: {
           gte: periodStart
-        }
+        },
+        // Filter by department for managers
+        ...(requiresDepartmentFiltering && userDepartment && {
+          requester: {
+            OR: [
+              { department: userDepartment },
+              { departmentRef: { name: userDepartment } }
+            ]
+          }
+        })
       },
       include: {
         items: {
@@ -44,7 +54,13 @@ export async function GET(request: Request) {
         },
         requester: {
           select: {
-            department: true
+            department: true,
+            departmentRef: {
+              select: {
+                name: true,
+                code: true
+              }
+            }
           }
         }
       }
@@ -68,7 +84,7 @@ export async function GET(request: Request) {
           gte: periodStart
         },
         status: {
-          in: ['SENT', 'CONFIRMED', 'RECEIVED'] // Only count orders that represent actual spending
+          in: ['APPROVED', 'ORDERED', 'RECEIVED'] // Only count orders that represent actual spending
         }
       },
       include: {
@@ -93,7 +109,7 @@ export async function GET(request: Request) {
 
     // Top departments by consumption with costs
     const departmentConsumption = approvedRequests.reduce((acc, request) => {
-      const dept = request.requester?.department || 'Unknown'
+      const dept = request.requester?.departmentRef?.name || request.requester?.department || 'Unknown'
       const requestTotal = request.items.reduce((sum, item) => sum + item.quantity, 0)
       const requestCost = request.items.reduce((sum, item) => {
         return sum + (item.totalPrice || (item.quantity * item.item.price))
@@ -157,7 +173,16 @@ export async function GET(request: Request) {
         },
         createdAt: {
           gte: periodStart
-        }
+        },
+        // Filter by department for managers
+        ...(requiresDepartmentFiltering && userDepartment && {
+          requester: {
+            OR: [
+              { department: userDepartment },
+              { departmentRef: { name: userDepartment } }
+            ]
+          }
+        })
       },
       include: {
         items: {
@@ -171,7 +196,13 @@ export async function GET(request: Request) {
         },
         requester: {
           select: {
-            department: true
+            department: true,
+            departmentRef: {
+              select: {
+                name: true,
+                code: true
+              }
+            }
           }
         }
       }
@@ -197,7 +228,7 @@ export async function GET(request: Request) {
           gte: currentMonth
         },
         status: {
-          in: ['SENT', 'CONFIRMED', 'RECEIVED']
+          in: ['APPROVED', 'ORDERED', 'RECEIVED']
         }
       }
     })
@@ -248,7 +279,7 @@ export async function GET(request: Request) {
 
     // Cost by department with order counts
     const departmentSpend = requests.reduce((acc, request) => {
-      const dept = request.requester?.department || 'Unknown'
+      const dept = request.requester?.departmentRef?.name || request.requester?.department || 'Unknown'
       const requestCost = request.items.reduce((sum, item) => {
         return sum + (item.totalPrice || (item.quantity * item.item.price))
       }, 0)

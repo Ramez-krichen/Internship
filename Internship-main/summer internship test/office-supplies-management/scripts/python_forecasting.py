@@ -269,7 +269,6 @@ def generate_next_periods(last_period, period_type, num_periods=3):
         
         # next_period is always assigned in the if/elif blocks above
         next_periods.append(next_period)
-            next_periods.append(next_period)
     
     return next_periods
 

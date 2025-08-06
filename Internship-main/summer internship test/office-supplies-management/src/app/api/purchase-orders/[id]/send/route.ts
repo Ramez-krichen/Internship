@@ -47,11 +47,11 @@ export async function POST(
       )
     }
 
-    // Update order status to SENT
+    // Update order status to ORDERED
     const updatedOrder = await prisma.purchaseOrder.update({
       where: { id },
       data: {
-        status: 'SENT',
+        status: 'ORDERED',
         updatedAt: new Date()
       },
       include: {

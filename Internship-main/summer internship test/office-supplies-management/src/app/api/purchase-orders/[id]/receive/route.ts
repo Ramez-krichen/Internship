@@ -39,10 +39,10 @@ export async function POST(
       return NextResponse.json({ error: 'Purchase order not found' }, { status: 404 })
     }
 
-    // Check if order can be received (must be SENT or CONFIRMED)
-    if (order.status !== 'SENT' && order.status !== 'CONFIRMED') {
+    // Check if order can be received (must be ORDERED or APPROVED)
+    if (order.status !== 'ORDERED' && order.status !== 'APPROVED') {
       return NextResponse.json(
-        { error: 'Only sent or confirmed orders can be marked as received' },
+        { error: 'Only ordered or approved orders can be marked as received' },
         { status: 400 }
       )
     }

@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { checkAccess, createFeatureAccessCheck } from '@/lib/server-access-control';
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const accessCheck = await checkAccess(createFeatureAccessCheck('INVENTORY', 'view')())
+    if (!accessCheck.hasAccess) {
+      return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status })
     }
 
     const { searchParams } = new URL(request.url);
@@ -73,10 +72,12 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const accessCheck = await checkAccess(createFeatureAccessCheck('INVENTORY', 'create')())
+    if (!accessCheck.hasAccess) {
+      return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status })
     }
+
+    const { user } = accessCheck
 
     const body = await request.json();
     const { itemId, quantity, reason, condition, description } = body;
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
         reason,
         condition,
         description,
-        requesterId: session.user.id
+        requesterId: user.id
       },
       include: {
         item: {

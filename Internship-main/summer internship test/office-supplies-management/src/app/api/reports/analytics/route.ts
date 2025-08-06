@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server'
 import { db as prisma } from '@/lib/db'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { checkAccess, createFeatureAccessCheck } from '@/lib/server-access-control'
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const accessCheck = await checkAccess(createFeatureAccessCheck('REPORTS', 'view')())
+    if (!accessCheck.hasAccess) {
+      return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status })
     }
+
+    const { user, userRole, userDepartment, requiresDepartmentFiltering, additionalRestrictions } = accessCheck
 
     // Get current date and calculate date ranges
     const now = new Date()
@@ -23,6 +24,19 @@ export async function GET() {
         createdAt: {
           gte: currentMonth,
         },
+        // Filter by department for managers
+        ...(requiresDepartmentFiltering && userDepartment && {
+          requester: {
+            OR: [
+              { department: userDepartment },
+              { departmentRef: { name: userDepartment } }
+            ]
+          }
+        }),
+        // Filter to personal requests only for employees
+        ...(additionalRestrictions?.includes('personal_only') && {
+          requesterId: user.id
+        }),
         status: 'APPROVED'
       },
       include: {
@@ -47,8 +61,21 @@ export async function GET() {
           gte: currentMonth,
         },
         status: {
-          in: ['SENT', 'CONFIRMED', 'RECEIVED'] // Only count orders that represent actual spending
-        }
+          in: ['ORDERED', 'RECEIVED'] // Only count orders that represent actual spending
+        },
+        // Filter by department for managers
+        ...(requiresDepartmentFiltering && userDepartment && {
+          createdBy: {
+            OR: [
+              { department: userDepartment },
+              { departmentRef: { name: userDepartment } }
+            ]
+          }
+        }),
+        // Filter to personal purchase orders only for employees
+        ...(additionalRestrictions?.includes('personal_only') && {
+          createdById: user.id
+        })
       }
     })
 
@@ -65,6 +92,19 @@ export async function GET() {
           gte: lastMonth,
           lt: currentMonth,
         },
+        // Filter by department for managers
+        ...(requiresDepartmentFiltering && userDepartment && {
+          requester: {
+            OR: [
+              { department: userDepartment },
+              { departmentRef: { name: userDepartment } }
+            ]
+          }
+        }),
+        // Filter to personal requests only for employees
+        ...(additionalRestrictions?.includes('personal_only') && {
+          requesterId: user.id
+        }),
         status: 'APPROVED'
       },
       include: {
@@ -90,8 +130,21 @@ export async function GET() {
           lt: currentMonth,
         },
         status: {
-          in: ['SENT', 'CONFIRMED', 'RECEIVED']
-        }
+          in: ['ORDERED', 'RECEIVED']
+        },
+        // Filter by department for managers
+        ...(requiresDepartmentFiltering && userDepartment && {
+          createdBy: {
+            OR: [
+              { department: userDepartment },
+              { departmentRef: { name: userDepartment } }
+            ]
+          }
+        }),
+        // Filter to personal purchase orders only for employees
+        ...(additionalRestrictions?.includes('personal_only') && {
+          createdById: user.id
+        })
       }
     })
 
@@ -232,7 +285,7 @@ export async function GET() {
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 4)
 
-    // Monthly trend (last 12 months to show historical data) - Include both requests and purchase orders
+    // Monthly trend (last 12 months) - Include both requests and purchase orders
     const monthlyTrend = []
     for (let i = 11; i >= 0; i--) {
       const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1)
@@ -244,6 +297,19 @@ export async function GET() {
             gte: monthStart,
             lte: monthEnd,
           },
+          // Filter by department for managers
+          ...(requiresDepartmentFiltering && userDepartment && {
+            requester: {
+              OR: [
+                { department: userDepartment },
+                { departmentRef: { name: userDepartment } }
+              ]
+            }
+          }),
+          // Filter to personal requests only for employees
+          ...(additionalRestrictions?.includes('personal_only') && {
+            requesterId: user.id
+          }),
           status: 'APPROVED'
         },
         include: {
@@ -269,8 +335,21 @@ export async function GET() {
             lte: monthEnd,
           },
           status: {
-            in: ['SENT', 'CONFIRMED', 'RECEIVED']
-          }
+            in: ['ORDERED', 'RECEIVED']
+          },
+          // Filter by department for managers
+          ...(requiresDepartmentFiltering && userDepartment && {
+            createdBy: {
+              OR: [
+                { department: userDepartment },
+                { departmentRef: { name: userDepartment } }
+              ]
+            }
+          }),
+          // Filter to personal purchase orders only for employees
+          ...(additionalRestrictions?.includes('personal_only') && {
+            createdById: user.id
+          })
         }
       })
 

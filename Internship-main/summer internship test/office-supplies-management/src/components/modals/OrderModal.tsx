@@ -82,12 +82,15 @@ export const OrderModal: React.FC<OrderModalProps> = ({
   const [isLoading, setIsLoading] = useState(false)
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [availableItems, setAvailableItems] = useState<InventoryItem[]>([])
+  const [availableDepartments, setAvailableDepartments] = useState<Array<{id: string, name: string, code: string}>>([])
+  const [loadingDepartments, setLoadingDepartments] = useState(false)
 
-  // Fetch suppliers and items
+  // Fetch suppliers, items, and departments
   useEffect(() => {
     if (isOpen) {
       fetchSuppliers()
       fetchAvailableItems()
+      fetchDepartments()
     }
   }, [isOpen])
 
@@ -138,6 +141,23 @@ export const OrderModal: React.FC<OrderModalProps> = ({
       }
     } catch (error) {
       console.error('Error fetching items:', error)
+    }
+  }
+
+  const fetchDepartments = async () => {
+    try {
+      setLoadingDepartments(true)
+      const response = await fetch('/api/departments/overview')
+      if (response.ok) {
+        const data = await response.json()
+        setAvailableDepartments(data.departments || [])
+      } else {
+        console.error('Failed to fetch departments:', response.status, response.statusText)
+      }
+    } catch (error) {
+      console.error('Error fetching departments:', error)
+    } finally {
+      setLoadingDepartments(false)
     }
   }
 
@@ -277,12 +297,10 @@ export const OrderModal: React.FC<OrderModalProps> = ({
 
   const departmentOptions = [
     { value: '', label: 'Select Department' },
-    { value: 'IT', label: 'Information Technology' },
-    { value: 'HR', label: 'Human Resources' },
-    { value: 'Finance', label: 'Finance' },
-    { value: 'Operations', label: 'Operations' },
-    { value: 'Marketing', label: 'Marketing' },
-    { value: 'Sales', label: 'Sales' }
+    ...availableDepartments.map(dept => ({
+      value: dept.name,
+      label: dept.name
+    }))
   ]
 
   const priorityOptions = [

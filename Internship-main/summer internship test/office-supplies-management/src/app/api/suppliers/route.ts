@@ -3,13 +3,14 @@ import { db as prisma } from '@/lib/db'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library'
+import { checkAccess, createFeatureAccessCheck } from '@/lib/server-access-control'
 
 // GET /api/suppliers - List all suppliers
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const accessCheck = await checkAccess(createFeatureAccessCheck('SUPPLIERS', 'view')())
+    if (!accessCheck.hasAccess) {
+      return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status })
     }
 
     const { searchParams } = new URL(request.url)

@@ -2,6 +2,8 @@
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
+import { useSearchParams } from 'next/navigation'
 import { Plus, Search, AlertTriangle, Package, Edit, Trash2, Eye, Calendar, Filter, ShoppingCart, CheckCircle } from 'lucide-react'
 import { InventoryModal, ViewInventoryModal } from '../../components/modals/InventoryModal'
 import { ConfirmModal } from '../../components/ui/modal'
@@ -9,6 +11,7 @@ import { ConfirmationModal } from '../../components/ui/confirmation-modal'
 import { PurchaseOrderModal } from '../../components/modals/PurchaseOrderModal'
 import { DateRange } from '../../components/ui/form'
 import { ExportButton } from '../../components/ui/export'
+import { canAccessFeature } from '@/lib/access-control'
 
 interface InventoryItem {
   id: string
@@ -36,6 +39,8 @@ interface InventoryItem {
 // Mock data removed - now fetching from API
 
 export default function InventoryPage() {
+  const { data: session } = useSession()
+  const searchParams = useSearchParams()
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('ALL')
   const [stockFilter, setStockFilter] = useState('ALL')
@@ -99,6 +104,12 @@ export default function InventoryPage() {
 
   // Function to auto-receive orders due today
   const autoReceiveOrders = async () => {
+    // Check if user has permission to auto-receive orders
+    if (!session?.user?.role || (session.user.role !== 'ADMIN' && session.user.role !== 'MANAGER')) {
+      alert('❌ You do not have permission to auto-receive orders. This feature is only available to Administrators and Managers.')
+      return
+    }
+
     try {
       console.log('Checking for orders to auto-receive...')
       const response = await fetch('/api/purchase-orders/auto-receive', {
@@ -113,12 +124,21 @@ export default function InventoryPage() {
           alert(`✅ Automatically received ${result.processedOrders.length} purchase order(s) that were due for delivery today. Inventory has been updated.`)
         } else {
           console.log('No orders were due for auto-receiving today')
+          alert('ℹ️ No orders were due for auto-receiving today.')
         }
       } else {
-        console.error('Failed to auto-receive orders:', await response.text())
+        const errorText = await response.text()
+        console.error('Failed to auto-receive orders:', errorText)
+
+        if (response.status === 403) {
+          alert('❌ You do not have permission to auto-receive orders. This feature is only available to Administrators and Managers.')
+        } else {
+          alert('❌ Failed to auto-receive orders. Please try again or contact support.')
+        }
       }
     } catch (error) {
       console.error('Error in auto-receive process:', error)
+      alert('❌ An error occurred while trying to auto-receive orders. Please try again.')
     }
   }
 
@@ -127,8 +147,10 @@ export default function InventoryPage() {
     try {
       setIsLoading(true)
 
-      // First, auto-receive any orders due today
-      await autoReceiveOrders()
+      // First, auto-receive any orders due today (only for ADMIN/MANAGER)
+      if (session?.user?.role && (session.user.role === 'ADMIN' || session.user.role === 'MANAGER')) {
+        await autoReceiveOrders()
+      }
 
       const [itemsResponse, suppliersResponse, categoriesResponse] = await Promise.all([
         fetch('/api/items'),
@@ -177,6 +199,15 @@ export default function InventoryPage() {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [])
+
+  // Handle URL parameters for filtering
+  useEffect(() => {
+    const status = searchParams.get('status')
+
+    if (status === 'low-stock') {
+      setStockFilter('LOW')
+    }
+  }, [searchParams])
 
   // CRUD Operations
   const handleAddItem = async (itemData: Omit<InventoryItem, 'id' | 'lastUpdated' | 'status'>) => {
@@ -352,11 +383,16 @@ export default function InventoryPage() {
       if (response.ok) {
         console.log('Purchase order created successfully')
         setPurchaseOrderModal({ isOpen: false, item: null })
+        // Refresh the items list to get updated data
+        await fetchData()
       } else {
-        throw new Error('Failed to create purchase order')
+        const errorData = await response.json()
+        console.error('Failed to create purchase order:', errorData)
+        alert(`Failed to create purchase order: ${errorData.error || 'Unknown error'}`)
       }
     } catch (error) {
       console.error('Error creating purchase order:', error)
+      alert('Error creating purchase order. Please try again.')
     }
   }
 
@@ -430,33 +466,39 @@ export default function InventoryPage() {
               <Package className="h-4 w-4" />
               Refresh
             </button>
-            <button
-              onClick={autoReceiveOrders}
-              className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center gap-2 transition-colors"
-              disabled={isLoading}
-              title="Process orders due for delivery today"
-            >
-              <CheckCircle className="h-4 w-4" />
-              Auto-Receive
-            </button>
+            {/* Auto-Receive button - only show to ADMIN/MANAGER */}
+            {session?.user?.role && (session.user.role === 'ADMIN' || session.user.role === 'MANAGER') && (
+              <button
+                onClick={autoReceiveOrders}
+                className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center gap-2 transition-colors"
+                disabled={isLoading}
+                title="Process orders due for delivery today (Admin/Manager only)"
+              >
+                <CheckCircle className="h-4 w-4" />
+                Auto-Receive
+              </button>
+            )}
             <ExportButton
               data={exportData}
               filename="inventory-report"
               variant="primary"
             />
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 transition-colors"
-              disabled={isLoading}
-            >
-              <Plus className="h-4 w-4" />
-              Add Item
-            </button>
+            {/* Only show Add Item button if user can create inventory items */}
+            {canAccessFeature(session?.user?.role, 'inventory', 'create') && (
+              <button
+                onClick={() => setIsAddModalOpen(true)}
+                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 transition-colors"
+                disabled={isLoading}
+              >
+                <Plus className="h-4 w-4" />
+                Add Item
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Stock Alerts */}
-        {(lowStockItems.length > 0 || outOfStockItems.length > 0) && (
+        {/* Stock Alerts - Only show for admins and managers, not employees */}
+        {(lowStockItems.length > 0 || outOfStockItems.length > 0) && session?.user?.role !== 'EMPLOYEE' && (
           <div className="space-y-3">
             {outOfStockItems.length > 0 && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -687,23 +729,27 @@ export default function InventoryPage() {
                       </td>
                       <td className="px-6 py-4 text-sm font-medium">
                         <div className="flex items-center space-x-2">
-                          <button 
+                          <button
                             onClick={() => handleViewItem(item)}
                             className="text-blue-600 hover:text-blue-900 p-1 rounded transition-colors hover:bg-blue-50"
                             title="View details"
                           >
                             <Eye className="h-4 w-4" />
                           </button>
-                          <button 
-                            onClick={() => setEditingItem(item)}
-                            className="text-indigo-600 hover:text-indigo-900 p-1 rounded transition-colors hover:bg-indigo-50"
-                            title="Edit item"
-                            disabled={isLoading}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          {(item.quantity <= item.minStock && item.isActive) && (
-                            <button 
+                          {/* Only show edit button if user can edit inventory */}
+                          {canAccessFeature(session?.user?.role, 'inventory', 'edit') && (
+                            <button
+                              onClick={() => setEditingItem(item)}
+                              className="text-indigo-600 hover:text-indigo-900 p-1 rounded transition-colors hover:bg-indigo-50"
+                              title="Edit item"
+                              disabled={isLoading}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </button>
+                          )}
+                          {/* Only show purchase order button if user can create orders and item is low stock */}
+                          {canAccessFeature(session?.user?.role, 'inventory', 'edit') && (item.quantity <= item.minStock && item.isActive) && (
+                            <button
                               onClick={() => setPurchaseOrderModal({ isOpen: true, item })}
                               className="text-green-600 hover:text-green-900 p-1 rounded transition-colors hover:bg-green-50"
                               title="Create purchase order"
@@ -712,24 +758,29 @@ export default function InventoryPage() {
                               <ShoppingCart className="h-4 w-4" />
                             </button>
                           )}
-                          {item.isActive ? (
-                            <button 
-                              onClick={() => setDeactivatingItem(item)}
-                              className="text-orange-600 hover:text-orange-900 p-1 rounded transition-colors hover:bg-orange-50"
-                              title="Deactivate item"
-                              disabled={isLoading}
-                            >
-                              <Package className="h-4 w-4" />
-                            </button>
-                          ) : (
-                            <button 
-                              onClick={() => setDeletingItem(item)}
-                              className="text-red-600 hover:text-red-900 p-1 rounded transition-colors hover:bg-red-50"
-                              title="Delete item permanently"
-                              disabled={isLoading}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                          {/* Only show deactivate/delete buttons if user can edit inventory */}
+                          {canAccessFeature(session?.user?.role, 'inventory', 'edit') && (
+                            item.isActive ? (
+                              <button
+                                onClick={() => setDeactivatingItem(item)}
+                                className="text-orange-600 hover:text-orange-900 p-1 rounded transition-colors hover:bg-orange-50"
+                                title="Deactivate item"
+                                disabled={isLoading}
+                              >
+                                <Package className="h-4 w-4" />
+                              </button>
+                            ) : (
+                              canAccessFeature(session?.user?.role, 'inventory', 'delete') && (
+                                <button
+                                  onClick={() => setDeletingItem(item)}
+                                  className="text-red-600 hover:text-red-900 p-1 rounded transition-colors hover:bg-red-50"
+                                  title="Delete item permanently"
+                                  disabled={isLoading}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              )
+                            )
                           )}
                         </div>
                       </td>

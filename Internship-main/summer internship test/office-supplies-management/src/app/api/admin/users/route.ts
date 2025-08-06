@@ -3,22 +3,34 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { db } from '@/lib/db'
 import bcrypt from 'bcryptjs'
+import { autoAssignManagerToDepartment, checkAndNotifyMultipleManagers } from '@/lib/manager-assignment'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   // Check if user is authenticated and is an admin
   const session = await getServerSession(authOptions)
-  
+
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  
+
   if (session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
-  
+
   try {
-    // Fetch all users with their passwords and lastSignIn
+    // Get query parameters
+    const { searchParams } = new URL(request.url)
+    const roleFilter = searchParams.get('role')
+
+    // Build where clause
+    const where: any = {}
+    if (roleFilter) {
+      where.role = roleFilter
+    }
+
+    // Fetch users with optional role filter
     const users = await db.user.findMany({
+      where,
       select: {
         id: true,
         name: true,
@@ -26,6 +38,8 @@ export async function GET() {
         password: true,
         role: true,
         department: true,
+        departmentId: true,
+        status: true,
         lastSignIn: true,
         createdAt: true,
         updatedAt: true
@@ -35,7 +49,7 @@ export async function GET() {
     // Transform the data to match the expected format
     const formattedUsers = users.map(user => ({
       ...user,
-      status: user.role === 'ADMIN' ? 'Active' : 'Active' // You may want to add a status field to your User model
+      status: user.status || 'ACTIVE' // Use actual status field or default to ACTIVE
     }))
 
     // Sort users by role priority: ADMIN first, then MANAGER, then EMPLOYEE
@@ -63,7 +77,12 @@ export async function GET() {
       return a.name.localeCompare(b.name)
     })
 
-    return NextResponse.json(sortedUsers)
+    // Return in the format expected by the frontend
+    if (roleFilter) {
+      return NextResponse.json({ users: sortedUsers })
+    } else {
+      return NextResponse.json(sortedUsers)
+    }
   } catch (error) {
     console.error('Error fetching users:', error)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
@@ -133,6 +152,15 @@ export async function POST(request: NextRequest) {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 12)
 
+    // Find department by name to get departmentId
+    let departmentId = null
+    if (department) {
+      const dept = await db.department.findFirst({
+        where: { name: department }
+      })
+      departmentId = dept?.id
+    }
+
     // Create user
     const user = await db.user.create({
       data: {
@@ -141,12 +169,37 @@ export async function POST(request: NextRequest) {
         password: hashedPassword,
         role,
         department,
+        departmentId
       }
     })
 
+    // If this is a manager and they belong to a department, try automatic assignment
+    let managerAssignmentResult = null
+    if (role === 'MANAGER' && departmentId) {
+      try {
+        managerAssignmentResult = await autoAssignManagerToDepartment(departmentId)
+      } catch (error) {
+        console.error('Error in automatic manager assignment after user creation:', error)
+        // Continue without failing the user creation
+      }
+    }
+
+    // Check for multiple managers across all departments and create notifications
+    if (role === 'MANAGER') {
+      try {
+        await checkAndNotifyMultipleManagers()
+      } catch (error) {
+        console.error('Error checking for multiple managers after user creation:', error)
+        // Continue without failing the user creation
+      }
+    }
+
     // Return created user without password
     const { password: _, ...userWithoutPassword } = user
-    return NextResponse.json(userWithoutPassword, { status: 201 })
+    return NextResponse.json({
+      ...userWithoutPassword,
+      managerAssignment: managerAssignmentResult
+    }, { status: 201 })
   } catch (error) {
     console.error('Error creating user:', error)
     return NextResponse.json(

@@ -2,14 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db as prisma } from '@/lib/db'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
+import { checkAccess, createFeatureAccessCheck } from '@/lib/server-access-control'
 
 // GET /api/items - List all items
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const accessCheck = await checkAccess(createFeatureAccessCheck('INVENTORY', 'view')())
+    if (!accessCheck.hasAccess) {
+      return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status })
     }
+
+    const { user, userRole, userDepartment, requiresDepartmentFiltering } = accessCheck
 
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
@@ -22,6 +25,9 @@ export async function GET(request: NextRequest) {
 
     // Build where clause
     const where: any = {}
+
+    // Note: Inventory items are global and not department-specific in the current schema
+    // Department restriction for managers applies to other features like requests and reports
     
     if (category && category !== 'ALL') {
       where.category = {
@@ -139,10 +145,12 @@ export async function GET(request: NextRequest) {
 // POST /api/items - Create new item
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session || (session.user.role !== 'ADMIN' && session.user.role !== 'MANAGER')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const accessCheck = await checkAccess(createFeatureAccessCheck('INVENTORY', 'create')())
+    if (!accessCheck.hasAccess) {
+      return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status })
     }
+
+    const { user, userRole, userDepartment, requiresDepartmentFiltering } = accessCheck
 
     const body = await request.json()
     const {
@@ -155,6 +163,7 @@ export async function POST(request: NextRequest) {
       currentStock,
       categoryId,
       supplierId,
+      department,
       isEcoFriendly,
       ecoRating,
       carbonFootprint,
@@ -168,6 +177,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // Note: Inventory items are global in the current schema
+    // Department restrictions apply to other features like requests and reports
 
     // Check if reference already exists
     const existingItem = await prisma.item.findUnique({

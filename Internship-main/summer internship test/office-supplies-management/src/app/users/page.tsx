@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
  import { DashboardLayout } from '@/components/layout/dashboard-layout'
  import { Users, Plus, Search, Shield, User, Crown, Edit, Eye, Filter, Download, Trash } from 'lucide-react'
 import { UserModal } from '@/components/modals/UserModal'
+import { UserPermissionsModal } from '@/components/modals/UserPermissionsModal'
 import { Modal, ConfirmModal } from '@/components/ui/modal'
 import { ConfirmationModal } from '@/components/ui/confirmation-modal'
 import { ExportButton } from '@/components/ui/export'
@@ -80,6 +81,7 @@ export default function UsersPage() {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false)
   const [userToDeactivate, setUserToDeactivate] = useState<User | null>(null)
   const [userToDelete, setUserToDelete] = useState<User | null>(null)
+  const [permissionsUser, setPermissionsUser] = useState<User | null>(null)
   const [isReadOnly, setIsReadOnly] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isDeactivating, setIsDeactivating] = useState(false)
@@ -394,26 +396,43 @@ export default function UsersPage() {
                   >
                     <Edit className="h-5 w-5" />
                   </button>
-                  <button
-                    onClick={() => setUserToDelete(user)}
-                    className="text-red-600 hover:text-red-800"
-                  >
-                    <Trash className="h-5 w-5" />
-                  </button>
-                  {user.status === 'ACTIVE' ? (
+                  {user.role === 'MANAGER' && (
                     <button
-                      onClick={() => setUserToDeactivate(user)}
-                      className="text-red-600 hover:text-red-800 flex items-center gap-1"
+                      onClick={() => setPermissionsUser(user)}
+                      className="text-purple-600 hover:text-purple-800"
+                      title="Manage permissions"
                     >
-                      <span className="text-sm">Deactivate</span>
+                      <Shield className="h-5 w-5" />
                     </button>
-                  ) : (
+                  )}
+                  {user.email !== 'admin@example.com' && (
                     <button
-                      onClick={() => setUserToDeactivate(user)}
-                      className="text-green-600 hover:text-green-800 flex items-center gap-1"
+                      onClick={() => setUserToDelete(user)}
+                      className="text-red-600 hover:text-red-800"
+                      title="Delete user"
                     >
-                      <span className="text-sm">Activate</span>
+                      <Trash className="h-5 w-5" />
                     </button>
+                  )}
+                  {user.email !== 'admin@example.com' && (
+                    user.status === 'ACTIVE' ? (
+                      <button
+                        onClick={() => setUserToDeactivate(user)}
+                        className="text-red-600 hover:text-red-800 flex items-center gap-1"
+                      >
+                        <span className="text-sm">Deactivate</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setUserToDeactivate(user)}
+                        className="text-green-600 hover:text-green-800 flex items-center gap-1"
+                      >
+                        <span className="text-sm">Activate</span>
+                      </button>
+                    )
+                  )}
+                  {user.email === 'admin@example.com' && (
+                    <span className="text-xs text-gray-500 italic">Main Admin</span>
                   )}
                       </div>
                     </td>
@@ -493,10 +512,20 @@ export default function UsersPage() {
         entityName={userToDeactivate?.name}
         isLoading={isDeactivating}
         customTitle={userToDeactivate?.status === 'ACTIVE' ? 'Deactivate User' : 'Activate User'}
-        customMessage={userToDeactivate?.status === 'ACTIVE' 
+        customMessage={userToDeactivate?.status === 'ACTIVE'
           ? 'This user will lose access to the system.'
           : 'This user will regain access to the system.'}
         customConfirmText={userToDeactivate?.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+      />
+
+      {/* User Permissions Modal */}
+      <UserPermissionsModal
+        isOpen={!!permissionsUser}
+        onClose={() => setPermissionsUser(null)}
+        user={permissionsUser}
+        onSave={() => {
+          fetchUsers() // Refresh the users list
+        }}
       />
     </DashboardLayout>
   )

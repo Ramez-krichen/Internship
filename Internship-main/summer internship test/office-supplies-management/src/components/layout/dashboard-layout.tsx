@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { Sidebar } from './sidebar'
 import { Menu } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import NotificationBadge from '@/components/admin/NotificationBadge'
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -60,7 +61,20 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               <Menu className="h-5 w-5" />
             </button>
             <h1 className="text-lg font-semibold text-gray-900">Office Supplies</h1>
-            <div className="w-8" /> {/* Spacer for centering */}
+            {session?.user?.role === 'ADMIN' && <NotificationBadge />}
+          </div>
+        </div>
+
+        {/* Desktop header */}
+        <div className="hidden lg:block bg-white shadow-sm border-b border-gray-200 px-6 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex-1" />
+            <div className="flex items-center gap-4">
+              {session?.user?.role === 'ADMIN' && <NotificationBadge />}
+              <div className="text-sm text-gray-600">
+                Welcome, {session?.user?.name}
+              </div>
+            </div>
           </div>
         </div>
         

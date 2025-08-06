@@ -7,14 +7,88 @@ datasource db {
   url      = "file:./dev.db"
 }
 
+model Department {
+  id               String          @id @default(cuid())
+  code             String          @unique
+  name             String
+  description      String?
+  parentId         String?
+  managerId        String?
+  budget           Float?
+  status           DepartmentStatus @default(ACTIVE)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  // Relations
+  parent           Department?     @relation("DepartmentHierarchy", fields: [parentId], references: [id])
+  children         Department[]    @relation("DepartmentHierarchy")
+  manager          User?           @relation("DepartmentManager", fields: [managerId], references: [id])
+  users            User[]          @relation("DepartmentUsers")
+
+  @@index([code])
+  @@index([parentId])
+  @@index([managerId])
+  @@index([status])
+  @@map("departments")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum DepartmentStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  COMPLETED
+}
+
+enum RequestPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  ORDERED
+  RECEIVED
+  CANCELLED
+}
+
 model User {
   id               String          @id @default(cuid())
   email            String          @unique
   name             String?
   password         String
-  role             String          @default("EMPLOYEE")
-  department       String?
-  status           String          @default("ACTIVE")
+  role             UserRole        @default(EMPLOYEE)
+  departmentId     String?
+  department       String?         // Keep for backward compatibility during migration
+  status           UserStatus      @default(ACTIVE)
+  permissions      String          @default("") // Comma-separated explicit permissions like "purchase_orders"
   lastSignIn       DateTime?
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
@@ -26,6 +100,14 @@ model User {
   returns          Return[]
   stockMovements   StockMovement[]
 
+  // Relations
+  departmentRef    Department?     @relation("DepartmentUsers", fields: [departmentId], references: [id])
+  managedDepartments Department[]  @relation("DepartmentManager")
+
+  @@index([departmentId])
+  @@index([role])
+  @@index([status])
+  @@index([email])
   @@map("users")
 }
 
@@ -103,8 +185,8 @@ model Request {
   id          String        @id @default(cuid())
   title       String
   description String?
-  status      String        @default("PENDING")
-  priority    String        @default("MEDIUM")
+  status      RequestStatus @default(PENDING)
+  priority    RequestPriority @default(MEDIUM)
   requesterId String
   department  String?
   totalAmount Float         @default(0)
@@ -119,6 +201,7 @@ model Request {
   @@index([requesterId])
   @@index([createdAt])
   @@index([priority])
+  @@index([department])
   @@map("requests")
 }
 
@@ -141,7 +224,7 @@ model Approval {
   id         String   @id @default(cuid())
   requestId  String
   approverId String
-  status     String   @default("PENDING")
+  status     ApprovalStatus @default(PENDING)
   comments   String?
   level      Int      @default(1)
   createdAt  DateTime @default(now())
@@ -150,6 +233,8 @@ model Approval {
   request    Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@unique([requestId, approverId, level])
+  @@index([status])
+  @@index([approverId])
   @@map("approvals")
 }
 
@@ -175,7 +260,7 @@ model PurchaseOrder {
   id           String      @id @default(cuid())
   orderNumber  String      @unique
   supplierId   String
-  status       String      @default("DRAFT")
+  status       PurchaseOrderStatus @default(DRAFT)
   totalAmount  Float       @default(0)
   orderDate    DateTime    @default(now())
   expectedDate DateTime?
@@ -192,6 +277,7 @@ model PurchaseOrder {
   @@index([supplierId])
   @@index([orderDate])
   @@index([createdAt])
+  @@index([createdById])
   @@map("purchase_orders")
 }
 
@@ -262,4 +348,27 @@ model DemandForecast {
 
   @@unique([itemId, period, periodType])
   @@map("demand_forecasts")
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  type        String   // 'MANAGER_ASSIGNMENT', 'SYSTEM_ALERT', etc.
+  title       String
+  message     String
+  data        String?  // JSON data for additional context
+  status      String   @default("UNREAD") // 'UNREAD', 'READ', 'DISMISSED'
+  priority    String   @default("MEDIUM") // 'LOW', 'MEDIUM', 'HIGH', 'URGENT'
+  targetRole  String?  // 'ADMIN', 'MANAGER', etc. - who should see this
+  targetUserId String? // specific user if needed
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  readAt      DateTime?
+  dismissedAt DateTime?
+
+  @@index([status])
+  @@index([targetRole])
+  @@index([targetUserId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("notifications")
 }

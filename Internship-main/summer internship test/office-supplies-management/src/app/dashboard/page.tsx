@@ -1,15 +1,19 @@
 'use client'
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { 
-  FileText, 
-  Package, 
-  ShoppingCart, 
+import {
+  FileText,
+  Package,
+  ShoppingCart,
   AlertTriangle,
   TrendingUp,
   Users
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { getDefaultDashboard } from '@/lib/access-control'
 
 interface Stat {
   name: string
@@ -43,13 +47,29 @@ const getStatConfig = (name: string) => {
 }
 
 export default function DashboardPage() {
+  const { data: session, status } = useSession()
+  const router = useRouter()
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showRoleBasedOptions, setShowRoleBasedOptions] = useState(false)
 
   useEffect(() => {
-    fetchDashboardData()
-  }, [])
+    if (status === 'loading') return
+
+    if (!session) {
+      router.push('/auth/signin')
+      return
+    }
+
+    // Redirect immediately to role-based dashboard
+    const defaultDashboard = getDefaultDashboard(session.user.role)
+    if (defaultDashboard !== '/dashboard') {
+      router.push(defaultDashboard)
+    } else {
+      fetchDashboardData()
+    }
+  }, [session, status, router])
 
   const fetchDashboardData = async () => {
     try {
@@ -67,11 +87,91 @@ export default function DashboardPage() {
     }
   }
 
-  if (loading) {
+  if (loading || showRoleBasedOptions) {
     return (
       <DashboardLayout>
-        <div className="flex items-center justify-center h-64">
-          <div className="text-lg text-gray-600">Loading dashboard...</div>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center max-w-2xl mx-auto">
+            <h1 className="text-3xl font-bold text-gray-900 mb-4">
+              Welcome to Office Supplies Management
+            </h1>
+            <p className="text-lg text-gray-600 mb-8">
+              Choose your dashboard view based on your role
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {/* Employee Dashboard */}
+              {session?.user?.role && ['EMPLOYEE', 'MANAGER', 'ADMIN'].includes(session.user.role) && (
+                <Link
+                  href="/dashboard/employee"
+                  className="group p-6 bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 hover:border-green-300"
+                >
+                  <div className="text-center">
+                    <div className="text-4xl mb-3">🟩</div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Personal Dashboard</h3>
+                    <p className="text-sm text-gray-600">View your personal requests and activities</p>
+                  </div>
+                </Link>
+              )}
+
+              {/* Manager Dashboard */}
+              {session?.user?.role && ['MANAGER', 'ADMIN'].includes(session.user.role) && (
+                <Link
+                  href="/dashboard/manager"
+                  className="group p-6 bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 hover:border-orange-300"
+                >
+                  <div className="text-center">
+                    <div className="text-4xl mb-3">🟧</div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Manager Dashboard</h3>
+                    <p className="text-sm text-gray-600">Manage department requests and approvals</p>
+                  </div>
+                </Link>
+              )}
+
+              {/* Department Dashboard */}
+              {session?.user?.role && ['MANAGER', 'ADMIN'].includes(session.user.role) && (
+                <Link
+                  href="/dashboard/department"
+                  className="group p-6 bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 hover:border-orange-300"
+                >
+                  <div className="text-center">
+                    <div className="text-4xl mb-3">🟧</div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Department Dashboard</h3>
+                    <p className="text-sm text-gray-600">Department analytics and performance</p>
+                  </div>
+                </Link>
+              )}
+
+              {/* Admin Dashboard */}
+              {session?.user?.role === 'ADMIN' && (
+                <Link
+                  href="/dashboard/admin"
+                  className="group p-6 bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 hover:border-purple-300"
+                >
+                  <div className="text-center">
+                    <div className="text-4xl mb-3">🟪</div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">System Dashboard</h3>
+                    <p className="text-sm text-gray-600">Complete system administration</p>
+                  </div>
+                </Link>
+              )}
+            </div>
+
+            <div className="mt-8">
+              <p className="text-sm text-gray-500">
+                Redirecting to your default dashboard in a few seconds...
+              </p>
+              <button
+                onClick={() => {
+                  setShowRoleBasedOptions(false)
+                  fetchDashboardData()
+                }}
+                className="mt-2 text-sm text-blue-600 hover:text-blue-500 underline"
+              >
+                Or continue to main dashboard
+              </button>
+            </div>
+          </div>
         </div>
       </DashboardLayout>
     )

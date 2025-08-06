@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { db as prisma } from '@/lib/db'
+import { checkAccess, createFeatureAccessCheck } from '@/lib/server-access-control'
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const accessCheck = await checkAccess(createFeatureAccessCheck('REPORTS', 'view')())
+    if (!accessCheck.hasAccess) {
+      return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status })
     }
+
+    const { user, userRole, userDepartment, requiresDepartmentFiltering, additionalRestrictions } = accessCheck
 
     const { searchParams } = new URL(request.url)
     const period = searchParams.get('period') || 'month' // month, quarter, year
@@ -41,6 +42,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Build department filter for managers
+    const departmentFilter = requiresDepartmentFiltering && userDepartment
+      ? { department: userDepartment }
+      : {}
+
     // Get approved requests spending
     const approvedRequests = await prisma.request.findMany({
       where: {
@@ -48,6 +54,14 @@ export async function GET(request: NextRequest) {
           gte: periodStart,
           lte: periodEnd
         },
+        // Filter by department for managers
+        ...(requiresDepartmentFiltering && userDepartment && {
+          requester: { department: userDepartment }
+        }),
+        // Filter to personal requests only for employees
+        ...(additionalRestrictions?.includes('personal_only') && {
+          requesterId: user.id
+        }),
         status: 'APPROVED'
       },
       include: {
@@ -84,7 +98,15 @@ export async function GET(request: NextRequest) {
         },
         status: {
           in: ['SENT', 'CONFIRMED', 'RECEIVED'] // Only count orders that represent actual spending
-        }
+        },
+        // Filter by department for managers
+        ...(requiresDepartmentFiltering && userDepartment && {
+          createdBy: { department: userDepartment }
+        }),
+        // Filter to personal purchase orders only for employees
+        ...(additionalRestrictions?.includes('personal_only') && {
+          createdById: user.id
+        })
       },
       include: {
         supplier: {

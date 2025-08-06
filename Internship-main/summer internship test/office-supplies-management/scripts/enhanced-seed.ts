@@ -31,26 +31,15 @@ async function main() {
   await prisma.supplier.deleteMany()
   await prisma.user.deleteMany()
 
-  // Create admin users
+  // Create single admin user
   const adminPassword = await bcrypt.hash('admin123', 12)
   const adminUser = await prisma.user.create({
     data: {
-      email: 'admin@company.com',
-      name: 'John Admin',
+      email: 'admin@example.com',
+      name: 'Main Admin',
       password: adminPassword,
       role: 'ADMIN',
       department: 'IT',
-      lastSignIn: randomDate(new Date(2024, 0, 1), new Date()),
-    },
-  })
-
-  const admin2 = await prisma.user.create({
-    data: {
-      email: 'sarah.admin@company.com',
-      name: 'Sarah Wilson',
-      password: adminPassword,
-      role: 'ADMIN',
-      department: 'Administration',
       lastSignIn: randomDate(new Date(2024, 0, 1), new Date()),
     },
   })

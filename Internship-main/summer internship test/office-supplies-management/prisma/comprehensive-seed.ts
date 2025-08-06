@@ -62,22 +62,20 @@ async function main() {
   
   const users = []
   
-  // Create admin users
-  for (let i = 0; i < 3; i++) {
-    const user = await prisma.user.create({
-      data: {
-        email: `admin${i + 1}@company.com`,
-        name: `Admin User ${i + 1}`,
-        password: hashedPassword,
-        role: 'ADMIN',
-        department: randomChoice(departments),
-        status: 'ACTIVE',
-        lastSignIn: randomDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), new Date()),
-        createdAt: randomDate(startDate, new Date(Date.now() - 365 * 24 * 60 * 60 * 1000))
-      }
-    })
-    users.push(user)
-  }
+  // Create single admin user
+  const adminUser = await prisma.user.create({
+    data: {
+      email: 'admin@example.com',
+      name: 'Main Admin',
+      password: hashedPassword,
+      role: 'ADMIN',
+      department: 'IT',
+      status: 'ACTIVE',
+      lastSignIn: randomDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), new Date()),
+      createdAt: randomDate(startDate, new Date(Date.now() - 365 * 24 * 60 * 60 * 1000))
+    }
+  })
+  users.push(adminUser)
   
   // Create manager users
   for (let i = 0; i < 8; i++) {
@@ -242,7 +240,7 @@ async function main() {
 
   // Create Requests with RequestItems
   console.log('📋 Creating requests...')
-  const requestStatuses = ['PENDING', 'IN_PROGRESS', 'APPROVED', 'REJECTED', 'COMPLETED'] as const
+  const requestStatuses = ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED', 'COMPLETED'] as const
   const priorities = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const
   
   const requests = []
@@ -344,7 +342,7 @@ async function main() {
 
   // Create Purchase Orders
   console.log('🛒 Creating purchase orders...')
-  const poStatuses = ['DRAFT', 'SENT', 'CONFIRMED', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELLED'] as const
+  const poStatuses = ['DRAFT', 'PENDING', 'APPROVED', 'ORDERED', 'RECEIVED', 'CANCELLED'] as const
   
   const purchaseOrders = []
   for (let year = 0; year < 10; year++) {
@@ -396,7 +394,7 @@ async function main() {
               unitPrice,
               totalPrice,
               receivedQuantity: purchaseOrder.status === 'RECEIVED' ? quantity :
-                              purchaseOrder.status === 'PARTIALLY_RECEIVED' ? randomInt(0, quantity) : 0
+                              purchaseOrder.status === 'ORDERED' ? randomInt(0, quantity) : 0
             }
           })
         }

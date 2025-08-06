@@ -2,6 +2,7 @@
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Plus, Search, Filter, Eye, Edit, Download, Calendar, FileText, Trash2 } from 'lucide-react'
 import { RequestModal } from '@/components/modals/RequestModal'
 import { Modal, ConfirmModal } from '@/components/ui/modal'
@@ -11,6 +12,7 @@ import { DateRange } from '@/components/ui/form'
 import { Pagination } from '@/components/ui/pagination'
 import { useSession } from 'next-auth/react'
 import { toast } from 'react-hot-toast'
+import { canAccessFeature } from '@/lib/access-control'
 
 interface RequestItem {
   id?: string
@@ -132,6 +134,7 @@ const priorityColors = {
 
 export default function RequestsPage() {
   const { data: session } = useSession()
+  const searchParams = useSearchParams()
   const [requests, setRequests] = useState<Request[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
@@ -207,6 +210,26 @@ export default function RequestsPage() {
 
     return () => clearTimeout(timeoutId)
   }, [searchTerm])
+
+  // Read URL parameters on component mount
+  useEffect(() => {
+    const status = searchParams.get('status')
+    const priority = searchParams.get('priority')
+    const department = searchParams.get('department')
+
+    if (status && ['PENDING', 'APPROVED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED'].includes(status.toUpperCase())) {
+      setStatusFilter(status.toUpperCase())
+      setShowFilters(true) // Show filters when coming from a filtered link
+    }
+    if (priority && ['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(priority.toUpperCase())) {
+      setPriorityFilter(priority.toUpperCase())
+      setShowFilters(true)
+    }
+    if (department) {
+      setDepartmentFilter(decodeURIComponent(department))
+      setShowFilters(true)
+    }
+  }, [searchParams])
   
   const handleAddRequest = async (requestData: Partial<Request>) => {
     try {
@@ -335,13 +358,16 @@ export default function RequestsPage() {
               <Download className="h-4 w-4" />
               <span className="hidden sm:inline ml-2">Export</span>
             </ExportButton>
-            <button
-              onClick={() => setIsNewRequestModalOpen(true)}
-              className="bg-blue-600 text-white px-3 py-2 rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 w-full sm:w-auto"
-            >
-              <Plus className="h-4 w-4" />
-              New Request
-            </button>
+            {/* Only show New Request button if user can create requests (not for admins) */}
+            {canAccessFeature(session?.user?.role, 'requests', 'create') && (
+              <button
+                onClick={() => setIsNewRequestModalOpen(true)}
+                className="bg-blue-600 text-white px-3 py-2 rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 w-full sm:w-auto"
+              >
+                <Plus className="h-4 w-4" />
+                New Request
+              </button>
+            )}
           </div>
         </div>
 
@@ -649,7 +675,9 @@ export default function RequestsPage() {
               <p className="mt-1 text-sm text-gray-500">
                 {searchTerm || statusFilter !== 'ALL' || priorityFilter !== 'ALL' || departmentFilter !== 'ALL' || dateRange.start || dateRange.end
                   ? 'Try adjusting your search or filter criteria.'
-                  : 'Get started by creating a new request.'}
+                  : canAccessFeature(session?.user?.role, 'requests', 'create')
+                    ? 'Get started by creating a new request.'
+                    : 'No requests to display.'}
               </p>
             </div>
           )}

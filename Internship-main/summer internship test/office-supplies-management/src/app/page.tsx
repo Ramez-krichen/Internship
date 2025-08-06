@@ -12,8 +12,25 @@ export default function Home() {
     if (status === 'loading') return // Still loading
 
     if (session) {
-      // Use window.location.href to avoid RSC navigation issues
-      window.location.href = '/dashboard'
+      // Redirect directly to role-based dashboard
+      const userRole = session.user.role
+      let dashboardUrl = '/dashboard'
+
+      switch (userRole) {
+        case 'ADMIN':
+          dashboardUrl = '/dashboard/admin'
+          break
+        case 'MANAGER':
+          dashboardUrl = '/dashboard/manager'
+          break
+        case 'EMPLOYEE':
+          dashboardUrl = '/dashboard/employee'
+          break
+        default:
+          dashboardUrl = '/dashboard'
+      }
+
+      window.location.href = dashboardUrl
     } else {
       window.location.href = '/auth/signin'
     }

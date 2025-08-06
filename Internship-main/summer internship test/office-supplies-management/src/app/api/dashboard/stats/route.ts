@@ -10,23 +10,30 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Employees don't have access to dashboard stats (including low stock alerts)
+    if (session.user.role === 'EMPLOYEE') {
+      return NextResponse.json({ error: 'Forbidden - Employees cannot access dashboard statistics' }, { status: 403 })
+    }
+
     // Get current date for comparisons
     const now = new Date()
     const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
     const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
     const lastMonth = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
 
-    // Get pending requests count
-    const pendingRequests = await prisma.request.count({
-      where: { status: 'PENDING' }
-    })
+    // Admin sees all data (existing behavior)
+    if (session.user.role === 'ADMIN') {
+      // Get pending requests count
+      const pendingRequests = await prisma.request.count({
+        where: { status: 'PENDING' }
+      })
 
-    const pendingRequestsYesterday = await prisma.request.count({
-      where: {
-        status: 'PENDING',
-        createdAt: { lte: yesterday }
-      }
-    })
+      const pendingRequestsYesterday = await prisma.request.count({
+        where: {
+          status: 'PENDING',
+          createdAt: { lte: yesterday }
+        }
+      })
 
     // Get low stock items count (items where currentStock <= 10 or 0)
     const lowStockItems = await prisma.item.count({

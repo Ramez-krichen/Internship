@@ -416,6 +416,11 @@ export default function AdminUsersPage() {
                           <Edit className="h-4 w-4" />
                           Edit
                         </button>
+                        {user.email === 'admin@example.com' && (
+                          <span className="text-xs text-amber-600 font-medium bg-amber-50 px-2 py-1 rounded">
+                            Main Admin
+                          </span>
+                        )}
                       </div>
                     </td>
                   </tr>

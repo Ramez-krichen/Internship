@@ -3,16 +3,13 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { db as prisma } from '@/lib/db'
 import bcrypt from 'bcryptjs'
+import { checkAccess, createFeatureAccessCheck } from '@/lib/server-access-control'
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    console.log('Session in /api/users:', session)
-
-    if (!session || (session.user.role !== 'ADMIN' && session.user.role !== 'MANAGER')) {
-      console.log('Unauthorized access to /api/users. Session:', session)
-
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const accessCheck = await checkAccess(createFeatureAccessCheck('USERS', 'view')())
+    if (!accessCheck.hasAccess) {
+      return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status })
     }
 
     const users = await prisma.user.findMany({
@@ -82,6 +79,32 @@ export async function POST(request: Request) {
 
     if (!name || !email || !password || !role || !department) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    }
+
+    // Check if email already exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email }
+    })
+
+    if (existingUser) {
+      return NextResponse.json(
+        { error: 'Email already in use' },
+        { status: 409 }
+      )
+    }
+
+    // Limit admin role creation - only allow one admin
+    if (role === 'ADMIN') {
+      const adminCount = await prisma.user.count({
+        where: { role: 'ADMIN' }
+      })
+
+      if (adminCount >= 1) {
+        return NextResponse.json(
+          { error: 'Only one admin account is allowed' },
+          { status: 403 }
+        )
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, 10)

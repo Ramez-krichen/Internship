@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     const ordersToReceive = await prisma.purchaseOrder.findMany({
       where: {
         status: {
-          in: ['SENT', 'CONFIRMED']
+          in: ['ORDERED', 'APPROVED']
         },
         expectedDate: {
           gte: startOfDay,
@@ -177,7 +177,7 @@ export async function GET(request: NextRequest) {
     const ordersToReceive = await prisma.purchaseOrder.findMany({
       where: {
         status: {
-          in: ['SENT', 'CONFIRMED']
+          in: ['ORDERED', 'APPROVED']
         },
         expectedDate: {
           gte: startOfDay,

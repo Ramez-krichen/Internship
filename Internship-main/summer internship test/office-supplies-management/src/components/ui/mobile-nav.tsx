@@ -3,18 +3,19 @@
 import React, { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { 
-  LayoutDashboard, 
-  FileText, 
-  Package, 
-  Building2, 
-  ShoppingCart, 
-  BarChart3, 
-  Users, 
+import {
+  LayoutDashboard,
+  FileText,
+  Package,
+  Building2,
+  ShoppingCart,
+  BarChart3,
+  Users,
   Settings,
   Menu,
   X,
-  ChevronRight
+  ChevronRight,
+  User
 } from 'lucide-react'
 
 interface NavItem {
@@ -31,72 +32,119 @@ interface MobileNavProps {
   userRole?: string
 }
 
-const navigationItems: NavItem[] = [
-  { 
-    name: 'Dashboard', 
-    href: '/dashboard', 
-    icon: LayoutDashboard 
-  },
-  { 
-    name: 'Requests', 
-    href: '/requests', 
-    icon: FileText,
-    children: [
-      { name: 'All Requests', href: '/requests', icon: FileText },
-      { name: 'My Requests', href: '/requests?filter=my', icon: FileText },
-      { name: 'Pending Approval', href: '/requests?status=pending', icon: FileText }
-    ]
-  },
-  { 
-    name: 'Inventory', 
-    href: '/inventory', 
-    icon: Package,
-    children: [
-      { name: 'All Items', href: '/inventory', icon: Package },
-      { name: 'Low Stock', href: '/inventory?status=low-stock', icon: Package },
-      { name: 'Categories', href: '/categories', icon: Package }
-    ]
-  },
-  { 
-    name: 'Suppliers', 
-    href: '/suppliers', 
-    icon: Building2 
-  },
-  { 
-    name: 'Purchase Orders', 
-    href: '/orders', 
-    icon: ShoppingCart,
-    children: [
-      { name: 'All Orders', href: '/orders', icon: ShoppingCart },
-      { name: 'Draft Orders', href: '/orders?status=draft', icon: ShoppingCart },
-      { name: 'Active Orders', href: '/orders?status=active', icon: ShoppingCart }
-    ]
-  },
-  { 
-    name: 'Reports', 
-    href: '/reports', 
-    icon: BarChart3,
-    children: [
-      { name: 'Dashboard Reports', href: '/reports', icon: BarChart3 },
-      { name: 'Quick Reports', href: '/quick-reports', icon: BarChart3 },
-      { name: 'Demand Forecast', href: '/demand-forecast', icon: BarChart3 }
-    ]
-  },
-  { 
-    name: 'Users', 
-    href: '/users', 
-    icon: Users 
-  },
-  { 
-    name: 'Settings', 
-    href: '/settings', 
-    icon: Settings 
+// Function to get navigation items based on user role
+const getNavigationItemsForRole = (userRole: string | undefined): NavItem[] => {
+  // Add role-specific dashboard items at the top
+  const dashboardItems: NavItem[] = []
+  const navigationItems: NavItem[] = []
+
+  switch (userRole) {
+    case 'ADMIN':
+      // Admin gets full access to all features
+      dashboardItems.push(
+        { name: 'Admin Dashboard', href: '/dashboard/admin', icon: LayoutDashboard },
+        { name: 'System Dashboard', href: '/dashboard/system', icon: LayoutDashboard },
+        { name: 'Department Dashboard', href: '/dashboard/department', icon: LayoutDashboard }
+      )
+      navigationItems.push(
+        {
+          name: 'Requests',
+          href: '/requests',
+          icon: FileText,
+          children: [
+            { name: 'All Requests', href: '/requests', icon: FileText },
+            { name: 'My Requests', href: '/requests?filter=my', icon: FileText },
+            { name: 'Pending Approval', href: '/requests?status=pending', icon: FileText }
+          ]
+        },
+        {
+          name: 'Inventory',
+          href: '/inventory',
+          icon: Package,
+          children: [
+            { name: 'All Items', href: '/inventory', icon: Package },
+            { name: 'Low Stock', href: '/inventory?status=low-stock', icon: Package },
+            { name: 'Categories', href: '/categories', icon: Package }
+          ]
+        },
+        { name: 'Suppliers', href: '/suppliers', icon: Building2 },
+        { name: 'Purchase Orders', href: '/orders', icon: ShoppingCart },
+        { name: 'Reports', href: '/reports', icon: BarChart3 },
+        { name: 'Users', href: '/users', icon: Users },
+        { name: 'Settings', href: '/settings', icon: Settings }
+      )
+      break
+    case 'MANAGER':
+      // Manager gets department operations and approvals
+      dashboardItems.push(
+        { name: 'Personal Dashboard', href: '/dashboard/employee', icon: LayoutDashboard },
+        { name: 'Department Dashboard', href: '/dashboard/department', icon: LayoutDashboard }
+      )
+      navigationItems.push(
+        {
+          name: 'Requests',
+          href: '/requests',
+          icon: FileText,
+          children: [
+            { name: 'All Requests', href: '/requests', icon: FileText },
+            { name: 'My Requests', href: '/requests?filter=my', icon: FileText },
+            { name: 'Pending Approval', href: '/requests?status=pending', icon: FileText }
+          ]
+        },
+        {
+          name: 'Inventory',
+          href: '/inventory',
+          icon: Package,
+          children: [
+            { name: 'All Items', href: '/inventory', icon: Package },
+            { name: 'Low Stock', href: '/inventory?status=low-stock', icon: Package }
+          ]
+        },
+        { name: 'Reports', href: '/reports', icon: BarChart3 }
+      )
+      break
+    case 'EMPLOYEE':
+      // Employee gets very limited access - focused on their own requests and inventory info
+      dashboardItems.push(
+        { name: 'Personal Dashboard', href: '/dashboard/employee', icon: LayoutDashboard }
+      )
+      navigationItems.push(
+        {
+          name: 'Requests',
+          href: '/requests',
+          icon: FileText,
+          children: [
+            { name: 'My Requests', href: '/requests?filter=my', icon: FileText }
+          ]
+        },
+        {
+          name: 'Inventory',
+          href: '/inventory',
+          icon: Package,
+          children: [
+            { name: 'All Items', href: '/inventory', icon: Package }
+          ]
+        },
+        { name: 'Reports', href: '/reports', icon: BarChart3 }
+      )
+      break
+    default:
+      dashboardItems.push(
+        { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard }
+      )
+      navigationItems.push(
+        { name: 'Requests', href: '/requests', icon: FileText },
+        { name: 'Inventory', href: '/inventory', icon: Package }
+      )
   }
-]
+
+  return [...dashboardItems, ...navigationItems]
+}
 
 export function MobileNav({ isOpen, onClose, userRole }: MobileNavProps) {
   const pathname = usePathname()
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
+  const navigationItems = getNavigationItemsForRole(userRole)
 
   const toggleExpanded = (itemName: string) => {
     const newExpanded = new Set(expandedItems)
@@ -118,17 +166,17 @@ export function MobileNav({ isOpen, onClose, userRole }: MobileNavProps) {
   const hasAccess = (item: NavItem) => {
     // Admin can access everything
     if (userRole === 'ADMIN') return true
-    
+
     // Managers can access most things except user management
     if (userRole === 'MANAGER') {
       return item.name !== 'Users'
     }
-    
+
     // Employees have limited access
     if (userRole === 'EMPLOYEE') {
       return !['Users', 'Settings'].includes(item.name)
     }
-    
+
     return true
   }
 
@@ -264,7 +312,7 @@ export function MobileBottomNav({ className = '' }: BottomNavProps) {
     { name: 'Requests', href: '/requests', icon: FileText },
     { name: 'Inventory', href: '/inventory', icon: Package },
     { name: 'Orders', href: '/orders', icon: ShoppingCart },
-    { name: 'More', href: '/menu', icon: Menu }
+    { name: 'Profile', href: '/profile', icon: User }
   ]
 
   return (

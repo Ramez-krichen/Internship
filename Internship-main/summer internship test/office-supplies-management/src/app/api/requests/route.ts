@@ -2,13 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { checkAccess, createFeatureAccessCheck } from '@/lib/server-access-control'
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const accessCheck = await checkAccess(createFeatureAccessCheck('REQUESTS', 'view')())
+    if (!accessCheck.hasAccess) {
+      return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status })
     }
+
+    const { user, userRole, userDepartment, requiresDepartmentFiltering } = accessCheck
 
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
@@ -50,11 +53,11 @@ export async function GET(request: NextRequest) {
     // Date range filter
     if (startDate || endDate) {
       where.createdAt = {}
-      
+
       if (startDate) {
         where.createdAt.gte = new Date(startDate)
       }
-      
+
       if (endDate) {
         // Set to end of the day for the end date
         const endDateTime = new Date(endDate)
@@ -62,6 +65,18 @@ export async function GET(request: NextRequest) {
         where.createdAt.lte = endDateTime
       }
     }
+
+    // Role-based filtering using enhanced access control
+    if (userRole === 'EMPLOYEE') {
+      // Employees can only see their own requests
+      where.requesterId = user.id
+    } else if (userRole === 'MANAGER' && requiresDepartmentFiltering) {
+      // Managers can see requests from their department
+      if (userDepartment) {
+        where.department = userDepartment
+      }
+    }
+    // Admins can see all requests (no additional filtering)
 
     const [requests, total] = await Promise.all([
       db.request.findMany({
@@ -133,6 +148,7 @@ export async function GET(request: NextRequest) {
         rejectedReason: latestApproval?.status === 'REJECTED' ? latestApproval.comments : undefined,
         items: request.items.map(item => ({
           id: item.id,
+          itemId: item.item.id, // Add the actual item ID for dropdown selection
           name: item.item.name,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
@@ -165,10 +181,12 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const accessCheck = await checkAccess(createFeatureAccessCheck('REQUESTS', 'create')())
+    if (!accessCheck.hasAccess) {
+      return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status })
     }
+
+    const { user, userRole, userDepartment } = accessCheck
 
     const body = await request.json()
     console.log('Request body:', JSON.stringify(body, null, 2))
@@ -203,19 +221,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user exists in database
-    const user = await db.user.findUnique({
-      where: { id: session.user.id }
+    const dbUser = await db.user.findUnique({
+      where: { id: user.id }
     })
-    
-    if (!user) {
-      console.log('User not found in database:', session.user.id)
+
+    if (!dbUser) {
+      console.log('User not found in database:', user.id)
       return NextResponse.json(
         { error: 'User not found in database' },
         { status: 400 }
       )
     }
     
-    console.log('User found:', { id: user.id, email: user.email, name: user.name })
+    console.log('User found:', { id: dbUser.id, email: dbUser.email, name: dbUser.name })
 
     // Calculate total amount
     const totalAmount = items.reduce(
@@ -231,7 +249,7 @@ export async function POST(request: NextRequest) {
         department,
         priority: priority || 'MEDIUM',
         totalAmount,
-        requesterId: session.user.id,
+        requesterId: user.id,
         items: {
           create: items.map((item: any) => ({
             itemId: item.itemId,
