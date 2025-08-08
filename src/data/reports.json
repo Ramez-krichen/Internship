@@ -1,0 +1,94 @@
+{
+  "overview": {
+    "totalItems": 150,
+    "activeItems": 113,
+    "lowStockItems": 5,
+    "outOfStockItems": 2,
+    "totalInventoryValue": 3523758.57,
+    "totalOrders": 50,
+    "pendingOrders": 12,
+    "monthlySpending": 379858.44
+  },
+  "categorySpending": {
+    "Writing Supplies": 504340.29,
+    "Paper Products": 767196.65,
+    "Office Equipment": 554236.22,
+    "Technology": 380177.52,
+    "Storage & Organization": 632411.05,
+    "Cleaning Supplies": 287757.44,
+    "Break Room Supplies": 397639.4
+  },
+  "monthlyTrend": [
+    {
+      "month": "2025-07",
+      "amount": 379858.44
+    },
+    {
+      "month": "2025-06",
+      "amount": 0
+    },
+    {
+      "month": "2025-05",
+      "amount": 0
+    },
+    {
+      "month": "2025-04",
+      "amount": 0
+    },
+    {
+      "month": "2025-03",
+      "amount": 0
+    },
+    {
+      "month": "2025-02",
+      "amount": 0
+    },
+    {
+      "month": "2025-01",
+      "amount": 0
+    },
+    {
+      "month": "2024-12",
+      "amount": 0
+    },
+    {
+      "month": "2024-11",
+      "amount": 0
+    },
+    {
+      "month": "2024-10",
+      "amount": 0
+    },
+    {
+      "month": "2024-09",
+      "amount": 0
+    },
+    {
+      "month": "2024-08",
+      "amount": 0
+    }
+  ],
+  "topSuppliers": [
+    {
+      "name": "OfficeMax",
+      "amount": 48502.56
+    },
+    {
+      "name": "Office Supplies Plus",
+      "amount": 36657.21
+    },
+    {
+      "name": "Grainger",
+      "amount": 34188.76
+    },
+    {
+      "name": "Walmart Business",
+      "amount": 32900.59
+    },
+    {
+      "name": "Office Essentials",
+      "amount": 31017.95
+    }
+  ],
+  "lastUpdated": "2025-07-26T17:43:45.236669"
+}

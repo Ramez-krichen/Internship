@@ -8,5 +8,14 @@
         "**/CVS": true,
         "**/.ruby-lsp": true,
         ".yoyo": true
+<<<<<<< HEAD
     }
+=======
+    },
+    "python.testing.pytestArgs": [
+        "."
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
+>>>>>>> 721ab7cae38b2c156d781aa06d448c54e7faf7ea
 }
